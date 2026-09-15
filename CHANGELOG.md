@@ -7,6 +7,8 @@ from its section below.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-15
+
 ### Added
 
 - Linux packages for Debian and Ubuntu (`.deb`), Fedora and openSUSE (`.rpm`), and
@@ -70,7 +72,8 @@ First release.
   key.
 - No network access, enforced in CI.
 
-[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/benjweaver/quietmouse/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/benjweaver/quietmouse/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/benjweaver/quietmouse/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/benjweaver/quietmouse/releases/tag/v0.1.0
