@@ -7,6 +7,8 @@ from its section below.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-15
+
 ### Changed
 
 - The example config now maps a left swipe to the desktop on the left, and a right
@@ -50,6 +52,7 @@ First release.
   key.
 - No network access, enforced in CI.
 
-[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/benjweaver/quietmouse/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/benjweaver/quietmouse/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/benjweaver/quietmouse/releases/tag/v0.1.0
