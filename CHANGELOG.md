@@ -7,6 +7,24 @@ from its section below.
 
 ## [Unreleased]
 
+### Added
+
+- Linux packages for Debian and Ubuntu (`.deb`), Fedora and openSUSE (`.rpm`), and
+  Arch and CachyOS (`.pkg.tar.zst`). Each installs the udev rule and loads `uinput` at
+  boot. Before publishing, every release installs them on Debian, Ubuntu, Fedora and
+  Arch in CI.
+- `install.sh` in the Linux tarball, for SteamOS, Bazzite, Fedora Silverblue and any
+  other distribution. It installs to `~/.local/bin` and only needs sudo for the udev
+  rule.
+- On KDE Plasma, desktop actions invoke KWin's own shortcuts by name, so they follow
+  your bindings. Other Linux desktops still get GNOME's default shortcuts.
+- A Homebrew tap: `brew install benjweaver/quietmouse/quietmouse`.
+
+### Fixed
+
+- The Linux tarball puts the udev rule at `packaging/linux/`, where the README says it
+  is.
+
 ## [0.1.2] - 2026-09-15
 
 ### Changed

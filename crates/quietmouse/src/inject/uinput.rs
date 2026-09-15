@@ -1,9 +1,10 @@
 //! Linux output through a uinput virtual device, which works on X11 and Wayland alike.
 
+use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
-use anyhow::Context;
+use anyhow::{Context, ensure};
 use evdev::uinput::VirtualDevice;
 use evdev::{AttributeSet, EventType, InputEvent, KeyCode, RelativeAxisCode};
 
@@ -41,7 +42,15 @@ impl Backend {
             Output::Chord(chord) => chord_codes(chord),
             Output::Media(media_key) => vec![media(*media_key)],
             Output::Click(mouse_button) => vec![button(*mouse_button)],
-            Output::Desktop(desktop) => chord_codes(&desktop_chord(*desktop)),
+            Output::Desktop(desktop) => {
+                if kde_session() {
+                    match invoke_kwin_shortcut(*desktop) {
+                        Ok(()) => return Ok(()),
+                        Err(error) => log::debug!("{error:#}; pressing the shortcut keys instead"),
+                    }
+                }
+                chord_codes(&desktop_chord(*desktop))
+            }
         };
         for &code in &codes {
             self.device.emit(&[key_event(code, 1)])?;
@@ -62,8 +71,55 @@ fn chord_codes(chord: &Chord) -> Vec<KeyCode> {
         .collect()
 }
 
-/// Common desktop defaults (GNOME, and Ubuntu's super+d); other desktops can
-/// bind `keys` actions instead.
+/// Whether this is a KDE Plasma session, which SteamOS's desktop mode, CachyOS
+/// and Bazzite use by default.
+fn kde_session() -> bool {
+    is_kde(std::env::var("XDG_CURRENT_DESKTOP").ok().as_deref())
+}
+
+/// `XDG_CURRENT_DESKTOP` is a colon-separated list, such as `KDE` or `ubuntu:GNOME`.
+fn is_kde(current_desktop: Option<&str>) -> bool {
+    current_desktop.is_some_and(|desktops| desktops.split(':').any(|name| name.eq_ignore_ascii_case("KDE")))
+}
+
+/// KWin's name for each desktop action. Invoking a shortcut by name follows the
+/// user's own binding and works on Wayland, like the registered-shortcut path on macOS.
+fn kwin_shortcut(desktop: Desktop) -> &'static str {
+    match desktop {
+        Desktop::Overview => "Overview",
+        Desktop::AppWindows => "ExposeClass",
+        Desktop::Show => "Show Desktop",
+        Desktop::Left => "Switch One Desktop to the Left",
+        Desktop::Right => "Switch One Desktop to the Right",
+    }
+}
+
+/// Asks KWin to run the shortcut, over the session bus with systemd's `busctl`.
+fn invoke_kwin_shortcut(desktop: Desktop) -> anyhow::Result<()> {
+    let shortcut = kwin_shortcut(desktop);
+    let output = Command::new("busctl")
+        .args([
+            "--user",
+            "call",
+            "org.kde.kglobalaccel",
+            "/component/kwin",
+            "org.kde.kglobalaccel.Component",
+            "invokeShortcut",
+            "s",
+            shortcut,
+        ])
+        .output()
+        .context("can't run busctl")?;
+    ensure!(
+        output.status.success(),
+        "KWin didn't run \"{shortcut}\": {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+    Ok(())
+}
+
+/// GNOME's default shortcuts, used outside KDE Plasma. Other desktops can bind
+/// `keys` or `shell` actions instead.
 fn desktop_chord(desktop: Desktop) -> Chord {
     let (modifiers, key) = match desktop {
         Desktop::Overview | Desktop::AppWindows => (vec![Modifier::Meta], None),
@@ -260,5 +316,39 @@ fn button(mouse_button: MouseButton) -> KeyCode {
         MouseButton::Middle => KeyCode::BTN_MIDDLE,
         MouseButton::Back => KeyCode::BTN_SIDE,
         MouseButton::Forward => KeyCode::BTN_EXTRA,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recognises_plasma_sessions() {
+        assert!(is_kde(Some("KDE")));
+        assert!(is_kde(Some("ubuntu:kde")));
+        assert!(!is_kde(Some("GNOME")));
+        assert!(!is_kde(Some("ubuntu:GNOME")));
+        assert!(!is_kde(Some("")));
+        assert!(!is_kde(None));
+    }
+
+    #[test]
+    fn desktop_actions_use_kwin_and_gnome_names() {
+        assert_eq!(kwin_shortcut(Desktop::Left), "Switch One Desktop to the Left");
+        assert_eq!(kwin_shortcut(Desktop::Overview), "Overview");
+        let left = desktop_chord(Desktop::Left);
+        assert_eq!(left.modifiers, vec![Modifier::Ctrl, Modifier::Alt]);
+        assert_eq!(left.key, Some(Key::Left));
+    }
+
+    #[test]
+    fn every_chord_key_has_a_code() {
+        for c in "abcdefghijklmnopqrstuvwxyz0123456789"
+            .chars()
+            .chain(PUNCTUATION.chars())
+        {
+            assert_ne!(char_code(c), KeyCode::KEY_UNKNOWN, "{c:?}");
+        }
     }
 }

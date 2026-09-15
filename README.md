@@ -28,7 +28,13 @@ at all. It talks HID++ directly to the device, and nothing else.
 
 ## Install
 
-Download an archive from the [Releases page](https://github.com/benjweaver/quietmouse/releases).
+On macOS, or on Linux if you use Homebrew:
+
+```sh
+brew install benjweaver/quietmouse/quietmouse
+```
+
+Otherwise, download from the [Releases page](https://github.com/benjweaver/quietmouse/releases).
 Checksums are in `SHA256SUMS`.
 
 - **Windows** (x64 or ARM64): unzip `quietmouse.exe` and `quietmoused.exe` into a folder
@@ -38,9 +44,23 @@ Checksums are in `SHA256SUMS`.
 - **macOS** (one universal binary for Apple Silicon and Intel): unpack into a folder you
   own, such as `~/.local/bin`, then run `xattr -d com.apple.quarantine quietmouse quietmoused`.
   The binaries aren't signed or notarised, so Gatekeeper blocks them otherwise.
-- **Linux** (x86_64, statically linked): unpack into a folder you own, such as
-  `~/.local/bin`, and install `packaging/linux/70-quietmouse.rules`. That's the one step
-  that needs root (see [Permissions](#permissions)).
+- **Linux** (x86_64): pick the file for your distribution. Each package installs the
+  programs and the udev rule that lets your user open Logitech devices, and loads
+  `uinput` at boot. The binaries are statically linked, so they don't depend on your
+  distribution's libraries.
+
+  | Distribution | File | Install with |
+  |---|---|---|
+  | Debian, Ubuntu, Mint, Pop!_OS | `.deb` | `sudo apt install ./quietmouse_*.deb` |
+  | Fedora, Nobara | `.rpm` | `sudo dnf install ./quietmouse-*.rpm` |
+  | openSUSE | `.rpm` | `sudo zypper install ./quietmouse-*.rpm` |
+  | Arch, CachyOS, Manjaro, EndeavourOS | `.pkg.tar.zst` | `sudo pacman -U ./quietmouse-*.pkg.tar.zst` |
+  | SteamOS, Bazzite, Fedora Silverblue, anything else | `.tar.gz` | unpack, then `./install.sh` |
+
+  `install.sh` puts the programs in `~/.local/bin`, so it works on read-only systems
+  too. Only the udev rule needs sudo, and it goes in `/etc`, which system updates keep.
+  On SteamOS, set a password with `passwd` first. `install.sh` also starts quietmouse
+  and sets it to start at log-in; `./install.sh --uninstall` removes it.
 
 Or build from source with `cargo build --release`.
 
@@ -64,7 +84,7 @@ every HID++ report.
 | OS | Needed |
 |----|--------|
 | macOS | **Input Monitoring**, to open the mouse, and **Accessibility**, to send keystrokes. Both are under System Settings → Privacy & Security. Grant them to what runs quietmouse: your terminal while testing, `quietmoused` when it runs at login. An unsigned binary needs granting again after each rebuild. On your own Mac this is just the switches. If your account isn't an administrator, as on many managed work Macs, macOS needs an administrator or your organisation's device management to approve Accessibility, and by default Input Monitoring too. |
-| Linux | Install [`packaging/linux/70-quietmouse.rules`](packaging/linux/70-quietmouse.rules) once, with sudo. It gives the logged-in user the Logitech hidraw devices and `/dev/uinput`, which the kernel otherwise keeps for root. Nothing else needs root, and if your distribution already ships Logitech udev rules (for example with Solaar) you may not need this step at all. Keystrokes go through uinput, so they work on X11 and Wayland. |
+| Linux | The packages and `install.sh` install [`packaging/linux/70-quietmouse.rules`](packaging/linux/70-quietmouse.rules) for you; otherwise copy it into `/etc/udev/rules.d` once, with sudo. It gives the logged-in user the Logitech hidraw devices and `/dev/uinput`, which the kernel otherwise keeps for root. Nothing else needs root, and if your distribution already ships Logitech udev rules (for example with Solaar) you may not need this step at all. Keystrokes go through uinput, so they work on X11 and Wayland. |
 | Windows | Nothing extra, and no admin rights. HID++ lives on a vendor-specific HID collection any user can open, and keystrokes go through `SendInput`. One Windows rule applies: a normal program can't send keys into windows running as administrator. |
 
 ## Config
@@ -104,7 +124,10 @@ Desktop actions use each system's own mechanism. On macOS they trigger the short
 registered in Keyboard Shortcuts, with the exact flags a real keyboard sends. If you
 rebind the shortcut, quietmouse follows; if you turn it off, quietmouse says so. (macOS
 has no public API to switch Spaces.) Windows uses Task View and the virtual-desktop
-shortcuts; Linux uses GNOME's defaults, and a `keys` action covers other desktops.
+shortcuts. On KDE Plasma (SteamOS desktop mode, CachyOS, Bazzite and others) they
+invoke KWin's own shortcuts by name, so your bindings are followed. Other Linux desktops
+get GNOME's default shortcuts. On Hyprland or Sway, use shell actions, such as
+`{ shell = "hyprctl dispatch workspace e-1" }`.
 
 Anything you leave out stays as the device has it.
 Mistakes such as unknown keys, buttons or fields, or out-of-range values are reported

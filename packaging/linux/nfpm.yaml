@@ -1,0 +1,41 @@
+# Linux packages (.deb, .rpm and Arch .pkg.tar.zst), built by the release
+# workflow with nfpm from the static musl binaries staged in pkgroot/.
+# VERSION comes from the environment.
+name: quietmouse
+arch: amd64
+platform: linux
+version: ${VERSION}
+section: utils
+priority: optional
+maintainer: Ben Weaver <benjweaver@outlook.com>
+description: |
+  Offline, telemetry-free settings, button remapping and gestures for Logitech
+  HID++ mice and receivers.
+vendor: quietmouse
+homepage: https://github.com/benjweaver/quietmouse
+license: MIT
+
+contents:
+  - src: ./pkgroot/quietmouse
+    dst: /usr/bin/quietmouse
+    file_info:
+      mode: 0755
+  - src: ./pkgroot/quietmoused
+    dst: /usr/bin/quietmoused
+    file_info:
+      mode: 0755
+  - src: ./packaging/linux/70-quietmouse.rules
+    dst: /usr/lib/udev/rules.d/70-quietmouse.rules
+  - src: ./packaging/linux/modules-load.conf
+    dst: /usr/lib/modules-load.d/quietmouse.conf
+  - src: ./README.md
+    dst: /usr/share/doc/quietmouse/README.md
+  - src: ./LICENSE
+    dst: /usr/share/licenses/quietmouse/LICENSE
+
+scripts:
+  postinstall: ./packaging/linux/postinstall.sh
+  postremove: ./packaging/linux/postremove.sh
+
+archlinux:
+  packager: Ben Weaver <benjweaver@outlook.com>
