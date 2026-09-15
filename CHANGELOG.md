@@ -5,6 +5,15 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Changed
+
+- The example config now maps a left swipe to the desktop on the left, and a right
+  swipe to the desktop on the right, instead of the trackpad-style reverse.
+- The example config explains how to reverse the wheel and thumb wheel on the mouse
+  itself, so on macOS the trackpad keeps natural scrolling while the mouse doesn't.
+
 ## [0.1.1] - 2026-09-15
 
 ### Added
@@ -41,5 +50,6 @@ First release.
   key.
 - No network access, enforced in CI.
 
+[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/benjweaver/quietmouse/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/benjweaver/quietmouse/releases/tag/v0.1.0

@@ -314,10 +314,13 @@ dpi = 1600
 # "freespin" lock it. threshold = 1–254: higher needs a harder flick to free-spin.
 smartshift = { mode = "auto" }
 
-# invert = true reverses this mouse's scrolling without touching the trackpad.
+# invert = true reverses the wheel inside the mouse. On macOS that means the trackpad
+# keeps natural scrolling while this mouse scrolls the traditional way.
 scroll = { invert = false }
 
-# Thumb wheel: leave unset for normal horizontal scrolling, or bind actions.
+# Thumb wheel: leave unset for normal sideways scrolling, reverse it like the wheel
+# above, or bind actions to it.
+# thumbwheel = { invert = true }
 # thumbwheel = { left = { keys = "ctrl+shift+tab" }, right = { keys = "ctrl+tab" } }
 
 # Hold the thumb button and swipe. Pressing without swiping is a tap.
@@ -327,8 +330,8 @@ scroll = { invert = false }
 tap = "overview"
 up = "overview"
 down = "app_windows"
-left = "desktop_right"       # swipe left to bring in the desktop on the right, like a trackpad
-right = "desktop_left"
+left = "desktop_left"        # swipe left to go to the desktop on the left
+right = "desktop_right"
 
 # The button behind the wheel.
 [device.buttons.mode_shift]
@@ -362,7 +365,8 @@ mod tests {
         assert_eq!(profile.dpi, Some(1600));
         let gesture = &profile.buttons[&ButtonId(cid::GESTURE)];
         assert!(gesture.has_swipes());
-        assert_eq!(gesture.left, Some(Action::DesktopRight));
+        assert_eq!(gesture.left, Some(Action::DesktopLeft));
+        assert_eq!(gesture.right, Some(Action::DesktopRight));
         assert_eq!(
             profile.buttons[&ButtonId(cid::MODE_SHIFT)].press,
             Some(Action::ToggleSmartshift)

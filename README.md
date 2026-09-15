@@ -84,8 +84,8 @@ thumbwheel = { left = { media = "volume_down" }, right = { media = "volume_up" }
 
 [device.buttons.gesture]             # hold and swipe; a press without a swipe is a tap
 tap = "overview"                     # Mission Control / Task View / Activities
-left = "desktop_right"               # next Space / virtual desktop / workspace
-right = "desktop_left"
+left = "desktop_left"                # the Space / virtual desktop / workspace on the left
+right = "desktop_right"
 threshold = 50                       # swipe distance in sensor counts
 
 [device.buttons.mode_shift]
