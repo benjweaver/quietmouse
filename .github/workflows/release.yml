@@ -73,6 +73,11 @@ jobs:
               for bin in quietmouse quietmoused; do
                 lipo -create -output "$dir/$bin" \
                   "target/aarch64-apple-darwin/release/$bin" "target/x86_64-apple-darwin/release/$bin"
+                # Only the arm64 slice comes out of the linker signed. Sign the universal
+                # binary as a whole so both slices carry a valid ad-hoc signature, which
+                # macOS privacy permissions (Input Monitoring, Accessibility) depend on.
+                codesign --force --sign - --identifier "io.github.benjweaver.quietmouse.$bin" "$dir/$bin"
+                codesign --verify --all-architectures --strict "$dir/$bin"
               done
               tar -czf "out/$dir.tar.gz" "$dir"
               ;;

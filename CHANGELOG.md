@@ -7,6 +7,15 @@ from its section below.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-15
+
+### Fixed
+
+- The macOS universal binaries are now signed for both architectures. Before, the
+  Intel half was unsigned, which can stop macOS from matching the Input Monitoring and
+  Accessibility permissions you grant to the program that actually runs. The release
+  build now fails if either architecture isn't validly signed.
+
 ## [0.1.3] - 2026-09-15
 
 ### Added
@@ -72,7 +81,8 @@ First release.
   key.
 - No network access, enforced in CI.
 
-[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/benjweaver/quietmouse/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/benjweaver/quietmouse/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/benjweaver/quietmouse/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/benjweaver/quietmouse/compare/v0.1.0...v0.1.1
