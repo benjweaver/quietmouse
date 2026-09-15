@@ -71,7 +71,7 @@ enum Command {
     Start,
     /// Stop the background agent or a running `quietmouse run`, handing buttons back first.
     Stop,
-    /// Start the background agent when you sign in (Windows; per user, no admin rights).
+    /// Start the background agent now and whenever you log in (per user, no admin rights).
     Autostart {
         #[arg(value_enum)]
         state: Switch,
@@ -145,6 +145,12 @@ pub fn agent_main() -> ExitCode {
         .init();
     match run(None) {
         Ok(()) => ExitCode::SUCCESS,
+        // Started twice, say at log-in and by hand: the running instance carries on,
+        // and a success here stops launchd or systemd from retrying.
+        Err(error) if error.is::<service::AlreadyRunning>() => {
+            log::info!("{error}");
+            ExitCode::SUCCESS
+        }
         Err(error) => {
             log::error!("{error:#}");
             ExitCode::FAILURE

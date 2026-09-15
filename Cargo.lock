@@ -455,7 +455,7 @@ dependencies = [
 
 [[package]]
 name = "hidpp"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "log",
  "thiserror",
@@ -711,7 +711,7 @@ dependencies = [
 
 [[package]]
 name = "quietmouse"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",

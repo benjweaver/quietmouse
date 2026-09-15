@@ -67,7 +67,6 @@ jobs:
                 lipo -create -output "$dir/$bin" \
                   "target/aarch64-apple-darwin/release/$bin" "target/x86_64-apple-darwin/release/$bin"
               done
-              cp -R packaging/macos "$dir/"
               tar -czf "$dir.tar.gz" "$dir"
               echo "ASSET=$dir.tar.gz" >> "$GITHUB_ENV"
               ;;
@@ -91,6 +90,25 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches the crate version
+        run: |
+          version=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME doesn't match version $version in Cargo.toml"
+            exit 1
+          fi
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v version="${GITHUB_REF_NAME#v}" '
+            index($0, "## [" version "]") == 1 { on = 1; next }
+            /^## \[/ || /^\[/ { on = 0 }
+            on
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::CHANGELOG.md has no section for ${GITHUB_REF_NAME#v}"
+            exit 1
+          fi
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -102,4 +120,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "$GITHUB_REF_NAME" dist/*
-          --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+          --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file notes.md

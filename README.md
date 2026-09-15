@@ -35,11 +35,12 @@ Checksums are in `SHA256SUMS`.
   you own, such as `%LOCALAPPDATA%\Programs\quietmouse`. No installer and no admin rights
   (see [Running at login](#running-at-login)). The files aren't code-signed, so
   SmartScreen may warn about an unrecognised app.
-- **macOS** (one universal binary for Apple Silicon and Intel): unpack, then run
-  `xattr -d com.apple.quarantine quietmouse quietmoused`. The binaries aren't signed or
-  notarised, so Gatekeeper blocks them otherwise.
-- **Linux** (x86_64, statically linked): unpack, and install
-  `packaging/linux/70-quietmouse.rules`.
+- **macOS** (one universal binary for Apple Silicon and Intel): unpack into a folder you
+  own, such as `~/.local/bin`, then run `xattr -d com.apple.quarantine quietmouse quietmoused`.
+  The binaries aren't signed or notarised, so Gatekeeper blocks them otherwise.
+- **Linux** (x86_64, statically linked): unpack into a folder you own, such as
+  `~/.local/bin`, and install `packaging/linux/70-quietmouse.rules`. That's the one step
+  that needs root (see [Permissions](#permissions)).
 
 Or build from source with `cargo build --release`.
 
@@ -62,8 +63,8 @@ every HID++ report.
 
 | OS | Needed |
 |----|--------|
-| macOS | **Input Monitoring**, to open the mouse, and **Accessibility**, to send keystrokes. Both are under System Settings → Privacy & Security. Grant them to the app that runs quietmouse: your terminal while testing, `/usr/local/bin/quietmouse` when it runs at login. An unsigned binary needs granting again after each rebuild. |
-| Linux | Install [`packaging/linux/70-quietmouse.rules`](packaging/linux/70-quietmouse.rules). It gives the logged-in user access to Logitech hidraw devices and `/dev/uinput`. Keystrokes go through uinput, so they work on X11 and Wayland. |
+| macOS | **Input Monitoring**, to open the mouse, and **Accessibility**, to send keystrokes. Both are under System Settings → Privacy & Security. Grant them to what runs quietmouse: your terminal while testing, `quietmoused` when it runs at login. An unsigned binary needs granting again after each rebuild. On your own Mac this is just the switches. If your account isn't an administrator, as on many managed work Macs, macOS needs an administrator or your organisation's device management to approve Accessibility, and by default Input Monitoring too. |
+| Linux | Install [`packaging/linux/70-quietmouse.rules`](packaging/linux/70-quietmouse.rules) once, with sudo. It gives the logged-in user the Logitech hidraw devices and `/dev/uinput`, which the kernel otherwise keeps for root. Nothing else needs root, and if your distribution already ships Logitech udev rules (for example with Solaar) you may not need this step at all. Keystrokes go through uinput, so they work on X11 and Wayland. |
 | Windows | Nothing extra, and no admin rights. HID++ lives on a vendor-specific HID collection any user can open, and keystrokes go through `SendInput`. One Windows rule applies: a normal program can't send keys into windows running as administrator. |
 
 ## Config
@@ -111,26 +112,26 @@ with the line they're on.
 
 ## Running at login
 
-- **macOS:** [`packaging/macos/local.quietmouse.plist`](packaging/macos/local.quietmouse.plist) (LaunchAgent).
-- **Linux:** [`packaging/linux/quietmouse.service`](packaging/linux/quietmouse.service) (systemd user service).
-- **Windows**, per user and without admin rights: put `quietmouse.exe` and
-  `quietmoused.exe` in a folder you own, such as `%LOCALAPPDATA%\Programs\quietmouse`, then:
+Everything here is per user, with no admin rights, on every platform. Put `quietmouse`
+and `quietmoused` (`.exe` on Windows) in a folder you own: `~/.local/bin` on macOS and
+Linux, `%LOCALAPPDATA%\Programs\quietmouse` on Windows. Then:
 
-  ```bat
-  quietmouse config --init
-  quietmouse autostart on
-  quietmouse start
-  ```
+```sh
+quietmouse config --init    # write a config, then edit it
+quietmouse autostart on     # start now, and whenever you log in
+```
 
-  `quietmoused.exe` is the background agent. It has no window and logs to
-  `%LOCALAPPDATA%\quietmouse\quietmouse.log`. `quietmouse autostart on` registers it in
-  your own `HKCU\…\Run` key; `quietmouse autostart off` removes it. Quit Logi Options+
-  if it's installed. If your organisation blocks unsigned programs, quietmouse won't
-  try to get around that; ask IT.
+`quietmoused` is the background agent. It has no window, and it logs to `quietmouse.log`
+in `~/Library/Application Support/quietmouse`, `~/.local/share/quietmouse` or
+`%LOCALAPPDATA%\quietmouse`. `autostart on` registers it for your account only: a
+LaunchAgent in `~/Library/LaunchAgents` on macOS, a systemd user service on Linux, or
+the `HKCU\…\Run` key on Windows. `quietmouse autostart off` removes it.
 
-`quietmouse start` and `quietmouse stop` work on every platform. Only one instance runs
-at a time. Stopping, whether by `quietmouse stop`, Ctrl+C or SIGTERM, hands diverted
-buttons back to the device first.
+`quietmouse start` and `quietmouse stop` start and stop the agent by hand. Only one
+instance runs at a time. Stopping, whether by `quietmouse stop`, Ctrl+C or SIGTERM,
+hands diverted buttons back to the device first. Quit Logi Options+ if it's installed.
+If your organisation blocks unsigned programs, quietmouse won't try to get around
+that; ask IT.
 
 ## How it works
 
@@ -142,7 +143,7 @@ crates/hidpp       HID++ 1.0/2.0 protocol. No OS dependencies; tested against sc
 crates/quietmouse  the app
   hid                hidapi discovery and transport (one reader thread per interface)
   daemon, worker     one worker thread per receiver or device; applies profiles and re-applies on wake
-  service            single instance, stop requests, agent log, Windows sign-in start
+  service            single instance, stop requests, agent log, per-user start at log-in
   bin/quietmoused    the windowless background agent
   gesture            swipe detection and thumb wheel steps
   inject             keystrokes: enigo on macOS and Windows, uinput on Linux
