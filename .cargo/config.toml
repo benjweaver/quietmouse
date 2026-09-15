@@ -1,0 +1,7 @@
+# Link the C runtime statically on Windows so the .exe files run on machines
+# without the Visual C++ redistributable, such as locked-down work PCs.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -1,0 +1,14 @@
+# Lets the logged-in user open Logitech HID++ devices, and create the virtual
+# keyboard quietmouse uses to send keystrokes for button and gesture actions.
+#
+# Install:
+#   sudo cp 70-quietmouse.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload && sudo udevadm trigger
+# then replug the receiver or reconnect the Bluetooth device.
+
+# Receivers and USB-connected devices.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", TAG+="uaccess"
+# Bluetooth devices (HID bus 0005, Logitech vendor 046D).
+SUBSYSTEM=="hidraw", KERNELS=="0005:046D:*", TAG+="uaccess"
+# Virtual keyboard for actions.
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"

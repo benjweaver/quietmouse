@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent that starts the quietmouse agent at login. Install:
+    sudo install -m 755 target/release/quietmouse target/release/quietmoused /usr/local/bin/
+    cp packaging/macos/local.quietmouse.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.quietmouse.plist
+  Then allow /usr/local/bin/quietmoused under Privacy & Security, in both
+  Input Monitoring and Accessibility. It logs to
+  ~/Library/Application Support/quietmouse/quietmouse.log.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.quietmouse</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/quietmoused</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>

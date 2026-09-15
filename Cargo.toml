@@ -1,0 +1,15 @@
+[workspace]
+resolver = "3"
+members = ["crates/hidpp", "crates/quietmouse"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+warnings = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }

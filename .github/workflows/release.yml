@@ -1,0 +1,105 @@
+name: Release
+
+# Builds quietmouse for every platform. Pushing a tag such as v0.1.0 publishes a
+# GitHub release with the archives and their checksums. Running the workflow by
+# hand (Actions → Release → Run workflow) only uploads them as build artifacts.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x86_64
+            os: windows-latest
+            targets: x86_64-pc-windows-msvc
+          - name: windows-arm64
+            os: windows-latest
+            targets: aarch64-pc-windows-msvc
+          - name: macos-universal
+            os: macos-latest
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - name: linux-x86_64
+            os: ubuntu-latest
+            targets: x86_64-unknown-linux-musl
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+      - name: Install musl tools
+        if: contains(matrix.targets, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build
+        shell: bash
+        run: |
+          for target in ${TARGETS//,/ }; do
+            cargo build --release --locked --target "$target"
+          done
+        env:
+          TARGETS: ${{ matrix.targets }}
+      - name: Package
+        shell: bash
+        env:
+          NAME: ${{ matrix.name }}
+          TARGETS: ${{ matrix.targets }}
+        run: |
+          set -euo pipefail
+          dir="quietmouse-${GITHUB_REF_NAME//\//-}-$NAME"
+          mkdir "$dir"
+          cp README.md LICENSE "$dir/"
+          case "$NAME" in
+            windows-*)
+              cp "target/$TARGETS/release/quietmouse.exe" "target/$TARGETS/release/quietmoused.exe" "$dir/"
+              7z a "$dir.zip" "$dir" > /dev/null
+              echo "ASSET=$dir.zip" >> "$GITHUB_ENV"
+              ;;
+            macos-*)
+              for bin in quietmouse quietmoused; do
+                lipo -create -output "$dir/$bin" \
+                  "target/aarch64-apple-darwin/release/$bin" "target/x86_64-apple-darwin/release/$bin"
+              done
+              cp -R packaging/macos "$dir/"
+              tar -czf "$dir.tar.gz" "$dir"
+              echo "ASSET=$dir.tar.gz" >> "$GITHUB_ENV"
+              ;;
+            linux-*)
+              cp "target/$TARGETS/release/quietmouse" "target/$TARGETS/release/quietmoused" "$dir/"
+              cp -R packaging/linux "$dir/"
+              tar -czf "$dir.tar.gz" "$dir"
+              echo "ASSET=$dir.tar.gz" >> "$GITHUB_ENV"
+              ;;
+          esac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ env.ASSET }}
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum -- * > SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" dist/*
+          --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes

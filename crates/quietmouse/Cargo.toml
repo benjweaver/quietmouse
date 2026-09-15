@@ -1,0 +1,37 @@
+[package]
+name = "quietmouse"
+description = "Offline, telemetry-free configuration for Logitech mice and receivers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+crossbeam-channel = "0.5.17"
+ctrlc = { version = "3.5.2", features = ["termination"] }
+dirs = "7.0.0"
+env_logger = "0.11.11"
+hidpp = { version = "0.1.0", path = "../hidpp" }
+log = "0.4.34"
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1.6"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = "0.25.0"
+hidapi = { version = "2.6.7", default-features = false, features = ["macos-shared-device"] }
+plist = { version = "1.10.1", default-features = false }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+hidapi = { version = "2.6.7", default-features = false, features = ["windows-native"] }
+windows-registry = "0.100.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+evdev = "0.13.2"
+hidapi = { version = "2.6.7", default-features = false, features = ["linux-native-basic-udev"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+enigo = { version = "0.6.1", default-features = false }
+
+[lints]
+workspace = true

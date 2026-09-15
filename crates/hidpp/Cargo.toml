@@ -1,0 +1,13 @@
+[package]
+name = "hidpp"
+description = "Logitech HID++ 1.0/2.0 protocol: receivers, feature discovery and device settings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+log = "0.4.34"
+thiserror = "2.0.20"
+
+[lints]
+workspace = true
