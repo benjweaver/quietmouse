@@ -13,6 +13,9 @@ use crate::keys::{Chord, MediaKey, MouseButton};
 
 /// Movement, in sensor counts, before a held gesture button counts as a swipe.
 pub const DEFAULT_GESTURE_THRESHOLD: u16 = 50;
+/// How much further along one axis than the other a swipe must be by default:
+/// whichever axis moved more decides it.
+pub const DEFAULT_GESTURE_STRAIGHTNESS: f32 = 1.0;
 /// Highest Easy-Switch channel a device can have.
 const MAX_HOST: u8 = 6;
 
@@ -98,6 +101,10 @@ pub struct ButtonConfig {
     pub right: Option<Action>,
     /// Swipe distance in sensor counts.
     pub threshold: Option<u16>,
+    /// How much further along one axis than the other a swipe must be before it
+    /// counts: 1.0 takes whichever axis moved more, 2.0 needs twice as far. A
+    /// swipe too diagonal to place does nothing.
+    pub straightness: Option<f32>,
 }
 
 impl ButtonConfig {
@@ -135,6 +142,10 @@ impl ButtonConfig {
             "`press` can't be combined with `tap`/`up`/`down`/`left`/`right`; put the no-swipe action in `tap`"
         );
         ensure!(self.threshold != Some(0), "`threshold` must be at least 1");
+        ensure!(
+            self.straightness.is_none_or(|value| value.is_finite() && value >= 1.0),
+            "`straightness` must be 1.0 or more"
+        );
         self.actions().try_for_each(Action::validate)
     }
 }
@@ -332,6 +343,9 @@ up = "overview"
 down = "app_windows"
 left = "desktop_left"        # swipe left to go to the desktop on the left
 right = "desktop_right"
+# threshold = 50             # how far to move before a swipe counts
+# straightness = 2.0         # how much further one way than the other it must be;
+                             # 1.0 takes whichever way moved more
 
 # The button behind the wheel.
 [device.buttons.mode_shift]

@@ -16,28 +16,36 @@ pub fn button_changes(before: &[u16], after: &[u16]) -> (Vec<u16>, Vec<u16>) {
     (pressed, released)
 }
 
-/// One press of a gesture button. A swipe fires as soon as the movement crosses
-/// the threshold, at most once per press; a press with no swipe is a tap.
+/// One press of a gesture button. A swipe fires as soon as the movement is both
+/// far enough and clearly along one axis, at most once per press. A press with
+/// no swipe is a tap.
 #[derive(Debug, Clone)]
 pub struct Gesture {
     dx: i32,
     dy: i32,
     threshold: u16,
+    straightness: f32,
+    far_enough: bool,
     fired: bool,
 }
 
 impl Gesture {
-    pub fn new(threshold: u16) -> Self {
+    /// `threshold` is how far the pointer must travel; `straightness` is how
+    /// much further along one axis than the other it must be before the
+    /// direction counts, where 1 means whichever axis moved more.
+    pub fn new(threshold: u16, straightness: f32) -> Self {
         Self {
             dx: 0,
             dy: 0,
             threshold: threshold.max(1),
+            straightness: straightness.max(1.0),
+            far_enough: false,
             fired: false,
         }
     }
 
-    /// Adds pointer movement; returns the swipe direction the first time the
-    /// distance travelled reaches the threshold.
+    /// Adds pointer movement, returning the swipe direction the first time the
+    /// movement is far enough and pointed clearly enough one way.
     pub fn movement(&mut self, dx: i16, dy: i16) -> Option<Direction> {
         if self.fired {
             return None;
@@ -48,20 +56,30 @@ impl Gesture {
         if distance_squared < i64::from(self.threshold).pow(2) {
             return None;
         }
+        self.far_enough = true;
+        let direction = self.direction()?;
         self.fired = true;
-        // HID pointer y grows downwards.
-        Some(if self.dx.abs() > self.dy.abs() {
-            if self.dx > 0 { Direction::Right } else { Direction::Left }
-        } else if self.dy > 0 {
-            Direction::Down
-        } else {
-            Direction::Up
-        })
+        Some(direction)
     }
 
-    /// Whether releasing now counts as a tap.
+    /// Which way the movement points, or `None` while it's too diagonal to tell.
+    fn direction(&self) -> Option<Direction> {
+        let sideways = self.dx.unsigned_abs() as f32;
+        let vertical = self.dy.unsigned_abs() as f32;
+        // HID pointer y grows downwards.
+        if sideways > vertical * self.straightness {
+            Some(if self.dx > 0 { Direction::Right } else { Direction::Left })
+        } else if vertical >= sideways * self.straightness {
+            Some(if self.dy > 0 { Direction::Down } else { Direction::Up })
+        } else {
+            None
+        }
+    }
+
+    /// Whether releasing now counts as a tap: the pointer never went far enough
+    /// to be a swipe. A swipe that stayed too diagonal to place is neither.
     pub fn is_tap(&self) -> bool {
-        !self.fired
+        !self.far_enough
     }
 }
 
@@ -105,24 +123,41 @@ mod tests {
     }
 
     #[test]
-    fn swipes_fire_once_on_the_dominant_axis() {
-        let mut gesture = Gesture::new(50);
+    fn swipes_fire_once_on_the_axis_that_moved_more() {
+        let mut gesture = Gesture::new(50, 1.0);
         assert_eq!(gesture.movement(10, -20), None);
         assert_eq!(gesture.movement(5, -30), Some(Direction::Up));
         assert_eq!(gesture.movement(0, -500), None);
         assert!(!gesture.is_tap());
 
-        let mut sideways = Gesture::new(50);
+        let mut sideways = Gesture::new(50, 1.0);
         assert_eq!(sideways.movement(-60, 10), Some(Direction::Left));
-        let mut down = Gesture::new(50);
+        let mut down = Gesture::new(50, 1.0);
         assert_eq!(down.movement(0, 50), Some(Direction::Down));
     }
 
     #[test]
     fn small_movement_is_still_a_tap() {
-        let mut gesture = Gesture::new(50);
+        let mut gesture = Gesture::new(50, 1.0);
         assert_eq!(gesture.movement(20, 20), None);
         assert!(gesture.is_tap());
+    }
+
+    #[test]
+    fn straightness_waits_for_a_clear_direction() {
+        let mut gesture = Gesture::new(50, 2.0);
+        // Far enough, but nearly diagonal: no direction yet.
+        assert_eq!(gesture.movement(45, 40), None);
+        // Carrying on sideways settles it.
+        assert_eq!(gesture.movement(60, 0), Some(Direction::Right));
+        assert!(!gesture.is_tap());
+    }
+
+    #[test]
+    fn a_swipe_that_never_settles_is_not_a_tap() {
+        let mut gesture = Gesture::new(50, 2.0);
+        assert_eq!(gesture.movement(45, 45), None);
+        assert!(!gesture.is_tap());
     }
 
     #[test]

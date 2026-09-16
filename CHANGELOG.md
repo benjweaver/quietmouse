@@ -7,6 +7,21 @@ from its section below.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-09-15
+
+### Added
+
+- `straightness` for gesture buttons: how much further along one axis than the other a
+  swipe must be before it counts, so a diagonal flick doesn't fire the wrong direction.
+  A swipe too diagonal to place does nothing, and doesn't count as a tap either. The
+  default, 1.0, keeps the old behaviour of taking whichever axis moved more.
+
+### Fixed
+
+- Quick back-to-back desktop swipes are no longer lost. macOS drops a Space switch
+  requested while the previous one is still sliding, so quietmouse now keeps switches
+  about half a second apart and queues any that come sooner.
+
 ## [0.1.4] - 2026-09-15
 
 ### Fixed
@@ -81,7 +96,8 @@ First release.
   key.
 - No network access, enforced in CI.
 
-[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/benjweaver/quietmouse/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/benjweaver/quietmouse/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/benjweaver/quietmouse/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/benjweaver/quietmouse/compare/v0.1.1...v0.1.2

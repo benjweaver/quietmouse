@@ -14,8 +14,8 @@ use hidpp::features::{self, dpi, host};
 use hidpp::{Device, DeviceEvent, Error, Link, Report, Session, receiver};
 
 use crate::config::{
-    Action, ButtonConfig, ButtonId, Config, DEFAULT_GESTURE_THRESHOLD, Profile, ScrollConfig, ShiftMode,
-    SmartShiftConfig, ThumbWheelConfig,
+    Action, ButtonConfig, ButtonId, Config, DEFAULT_GESTURE_STRAIGHTNESS, DEFAULT_GESTURE_THRESHOLD, Profile,
+    ScrollConfig, ShiftMode, SmartShiftConfig, ThumbWheelConfig,
 };
 use crate::connect::{self, Role};
 use crate::gesture::{self, Gesture, Ticker};
@@ -357,7 +357,8 @@ impl DeviceState {
                     };
                     if binding.is_gesture() {
                         let threshold = binding.threshold.unwrap_or(DEFAULT_GESTURE_THRESHOLD);
-                        self.gesture = Some((cid, Gesture::new(threshold)));
+                        let straightness = binding.straightness.unwrap_or(DEFAULT_GESTURE_STRAIGHTNESS);
+                        self.gesture = Some((cid, Gesture::new(threshold, straightness)));
                     } else if let Some(action) = binding.press.clone() {
                         self.perform(session, &action, injector)?;
                     }
