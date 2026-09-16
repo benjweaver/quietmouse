@@ -7,6 +7,17 @@ from its section below.
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-09-15
+
+### Added
+
+- `THIRD-PARTY-NOTICES.md` in every release archive and package, listing the
+  licences of the crates compiled into the binaries. The binaries are statically
+  linked, and the MIT, BSD, MPL and Unicode licences involved all ask for their
+  notices to travel with them; only quietmouse's own LICENSE was being shipped.
+  The macOS binaries also link HIDAPI's C library, whose BSD notice is now
+  reproduced.
+
 ## [0.1.8] - 2026-09-15
 
 ### Added
@@ -146,7 +157,8 @@ First release.
   key.
 - No network access, enforced in CI.
 
-[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/benjweaver/quietmouse/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/benjweaver/quietmouse/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/benjweaver/quietmouse/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/benjweaver/quietmouse/compare/v0.1.5...v0.1.6

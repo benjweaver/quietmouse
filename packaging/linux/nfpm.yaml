@@ -32,6 +32,8 @@ contents:
     dst: /usr/share/doc/quietmouse/README.md
   - src: ./LICENSE
     dst: /usr/share/licenses/quietmouse/LICENSE
+  - src: ./pkgroot/THIRD-PARTY-NOTICES.md
+    dst: /usr/share/licenses/quietmouse/THIRD-PARTY-NOTICES.md
 
 scripts:
   postinstall: ./packaging/linux/postinstall.sh

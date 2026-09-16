@@ -1,9 +1,11 @@
 //! Logitech HID++ 1.0/2.0 protocol.
 //!
 //! Transport-agnostic: everything runs over a [`Link`], so the protocol logic
-//! has no OS dependencies and is tested against scripted devices. Protocol
-//! details follow the behaviour documented by Solaar and logiops, the
-//! long-standing open-source Linux implementations.
+//! has no OS dependencies and is tested against scripted devices. This is an
+//! independent implementation, written from published descriptions of the
+//! protocol. Solaar and logiops, the long-standing open-source Linux
+//! implementations, documented much of the behaviour it relies on; no code
+//! from either is used here.
 
 mod device;
 mod error;
