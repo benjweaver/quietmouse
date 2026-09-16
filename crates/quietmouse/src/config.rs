@@ -20,8 +20,9 @@ pub const DEFAULT_GESTURE_THRESHOLD: u16 = 30;
 /// short enough that back-to-back swipes don't feel held up.
 pub const DEFAULT_DESKTOP_SWITCH_GAP_MS: u16 = 100;
 /// How much further along one axis than the other a swipe must be by default.
-/// Twice as far: a near-diagonal flick does nothing rather than guessing.
-pub const DEFAULT_GESTURE_STRAIGHTNESS: f32 = 2.0;
+/// Half again as far: enough that a near-diagonal flick does nothing rather than
+/// guessing, without making a flick that leans slightly wait to be sure.
+pub const DEFAULT_GESTURE_STRAIGHTNESS: f32 = 1.5;
 /// Highest Easy-Switch channel a device can have.
 const MAX_HOST: u8 = 6;
 
@@ -367,7 +368,7 @@ down = "app_windows"
 left = "desktop_left"        # swipe left to go to the desktop on the left
 right = "desktop_right"
 # threshold = 30             # how far to move before a swipe counts
-# straightness = 2.0         # how much further one way than the other it must be;
+# straightness = 1.5         # how much further one way than the other it must be;
                              # 1.0 takes whichever way moved more
 
 # The button behind the wheel.
@@ -407,6 +408,24 @@ mod tests {
         assert_eq!(
             profile.buttons[&ButtonId(cid::MODE_SHIFT)].press,
             Some(Action::ToggleSmartshift)
+        );
+    }
+
+    // The example shows the defaults commented out, so nothing parses them and
+    // they drift silently when a constant changes.
+    #[test]
+    fn example_documents_the_real_defaults() {
+        fn documented(prefix: &str) -> &'static str {
+            let line = EXAMPLE
+                .lines()
+                .find(|line| line.starts_with(prefix))
+                .unwrap_or_else(|| panic!("the example no longer shows `{prefix}`"));
+            line[prefix.len()..].split('#').next().unwrap().trim()
+        }
+        assert_eq!(documented("# threshold = "), DEFAULT_GESTURE_THRESHOLD.to_string());
+        assert_eq!(
+            documented("# straightness = "),
+            DEFAULT_GESTURE_STRAIGHTNESS.to_string()
         );
     }
 

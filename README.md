@@ -107,7 +107,7 @@ tap = "overview"                     # Mission Control / Task View / Activities
 left = "desktop_left"                # the Space / virtual desktop / workspace on the left
 right = "desktop_right"
 threshold = 30                       # how far to move before a swipe counts
-straightness = 2.0                   # how much further one way than the other it must be
+straightness = 1.5                   # how much further one way than the other it must be
 
 [device.buttons.mode_shift]
 press = "toggle_smartshift"

@@ -7,6 +7,14 @@ from its section below.
 
 ## [Unreleased]
 
+### Changed
+
+- Swipes need less of a lean before they pick a direction: the default
+  `straightness` drops from 2.0 to 1.5, after testing on an MX Master 3S. A
+  sideways flick that arcs a little now fires as you commit to it, instead of
+  waiting for one axis to get twice as far as the other. Set `straightness`
+  yourself to keep the old behaviour.
+
 ## [0.1.9] - 2026-09-15
 
 ### Added
