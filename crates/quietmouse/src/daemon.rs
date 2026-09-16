@@ -27,7 +27,7 @@ pub fn run(config: Config) -> anyhow::Result<()> {
     let _instance = service::lock_instance()?;
     service::clear_stop_request();
     let shutdown = Shutdown::new();
-    let injector = Injector::spawn().context("can't start keystroke output")?;
+    let injector = Injector::spawn(config.desktop_switch_gap()).context("can't start keystroke output")?;
     let shared = Arc::new(Shared { config, injector });
     let mut api = HidApi::new().context("can't start HID access")?;
     let mut workers: HashMap<String, JoinHandle<Outcome>> = HashMap::new();

@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{Context, bail, ensure};
 use hidpp::features::reprog::cid;
@@ -12,18 +13,35 @@ use crate::gesture::Direction;
 use crate::keys::{Chord, MediaKey, MouseButton};
 
 /// Movement, in sensor counts, before a held gesture button counts as a swipe.
-pub const DEFAULT_GESTURE_THRESHOLD: u16 = 50;
-/// How much further along one axis than the other a swipe must be by default:
-/// whichever axis moved more decides it.
-pub const DEFAULT_GESTURE_STRAIGHTNESS: f32 = 1.0;
+/// Low, so a swipe fires as soon as you commit to it; [`DEFAULT_GESTURE_STRAIGHTNESS`]
+/// is what keeps a near-diagonal flick from picking the wrong direction.
+pub const DEFAULT_GESTURE_THRESHOLD: u16 = 30;
+/// Default gap between desktop switches: long enough for the switch to land,
+/// short enough that back-to-back swipes don't feel held up.
+pub const DEFAULT_DESKTOP_SWITCH_GAP_MS: u16 = 100;
+/// How much further along one axis than the other a swipe must be by default.
+/// Twice as far: a near-diagonal flick does nothing rather than guessing.
+pub const DEFAULT_GESTURE_STRAIGHTNESS: f32 = 2.0;
 /// Highest Easy-Switch channel a device can have.
 const MAX_HOST: u8 = 6;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// How long to leave between desktop switches, in milliseconds. Systems drop
+    /// a switch asked for while the previous one is still animating, so quicker
+    /// swipes wait their turn. Lower it until swipes start going missing.
+    pub desktop_switch_gap_ms: Option<u16>,
     #[serde(default, rename = "device")]
     pub devices: Vec<Profile>,
+}
+
+impl Config {
+    pub fn desktop_switch_gap(&self) -> Duration {
+        Duration::from_millis(u64::from(
+            self.desktop_switch_gap_ms.unwrap_or(DEFAULT_DESKTOP_SWITCH_GAP_MS),
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -317,6 +335,11 @@ const EXAMPLE: &str = r#"# quietmouse config. Restart `quietmouse run` after edi
 # Every setting is optional: anything left out stays as the device has it.
 # `quietmouse info` shows what your device supports.
 
+# Gap between desktop switches, in milliseconds. Switches asked for while the
+# previous one is still animating get dropped, so quicker swipes wait their turn.
+# Lower it until swipes start going missing.
+# desktop_switch_gap_ms = 100
+
 [[device]]
 match = "MX Master"          # part of the device name, any case ("*" = any device)
 dpi = 1600
@@ -343,7 +366,7 @@ up = "overview"
 down = "app_windows"
 left = "desktop_left"        # swipe left to go to the desktop on the left
 right = "desktop_right"
-# threshold = 50             # how far to move before a swipe counts
+# threshold = 30             # how far to move before a swipe counts
 # straightness = 2.0         # how much further one way than the other it must be;
                              # 1.0 takes whichever way moved more
 

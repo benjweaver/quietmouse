@@ -40,12 +40,12 @@ impl Injector {
     /// that permission prompts appear at startup rather than on the first button
     /// press, and keeps trying if that's refused, so granting the permission
     /// later starts working without a restart.
-    pub fn spawn() -> std::io::Result<Self> {
+    pub fn spawn(desktop_switch_gap: Duration) -> std::io::Result<Self> {
         let (tx, rx) = crossbeam_channel::unbounded::<Output>();
         std::thread::Builder::new().name("inject".into()).spawn(move || {
             let mut opener = BackendOpener::default();
             opener.backend();
-            let mut pacer = Pacer::new(DESKTOP_SWITCH_GAP);
+            let mut pacer = Pacer::new(desktop_switch_gap);
             for output in rx {
                 let wait = pacer.wait_before(&output, Instant::now());
                 if !wait.is_zero() {
@@ -70,10 +70,6 @@ impl Injector {
     }
 }
 
-/// Time for a desktop switch's slide animation to finish. macOS, and other
-/// desktops with animated switching, drop a switch requested while the previous
-/// one is still sliding.
-const DESKTOP_SWITCH_GAP: Duration = Duration::from_millis(450);
 /// How often to try opening the backend again while it's refused, usually
 /// because macOS hasn't been given Accessibility yet.
 const BACKEND_RETRY: Duration = Duration::from_secs(5);

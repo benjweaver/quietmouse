@@ -7,6 +7,21 @@ from its section below.
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-09-15
+
+### Added
+
+- `desktop_switch_gap_ms`, the gap left between desktop switches. Lower it until
+  swipes start going missing.
+
+### Changed
+
+- Gestures fire sooner and pick directions more carefully, after testing on an
+  MX Master 3S: swipes now fire after 30 counts of movement rather than 50, and must
+  go twice as far one way as the other, where before whichever axis moved more won. A
+  near-diagonal flick now does nothing instead of guessing. The gap between desktop
+  switches drops from 450ms to 100ms.
+
 ## [0.1.7] - 2026-09-15
 
 ### Fixed
@@ -131,7 +146,8 @@ First release.
   key.
 - No network access, enforced in CI.
 
-[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/benjweaver/quietmouse/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/benjweaver/quietmouse/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/benjweaver/quietmouse/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/benjweaver/quietmouse/compare/v0.1.4...v0.1.5

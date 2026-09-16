@@ -106,7 +106,7 @@ thumbwheel = { left = { media = "volume_down" }, right = { media = "volume_up" }
 tap = "overview"                     # Mission Control / Task View / Activities
 left = "desktop_left"                # the Space / virtual desktop / workspace on the left
 right = "desktop_right"
-threshold = 50                       # how far to move before a swipe counts
+threshold = 30                       # how far to move before a swipe counts
 straightness = 2.0                   # how much further one way than the other it must be
 
 [device.buttons.mode_shift]
