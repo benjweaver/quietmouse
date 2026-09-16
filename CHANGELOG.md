@@ -7,6 +7,20 @@ from its section below.
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-09-15
+
+### Fixed
+
+- Granting a permission on macOS now really does take effect on its own. macOS decides
+  once per process whether it may read input devices and keeps to that answer, so
+  retrying was never going to help; quietmouse now notices the permission arriving and
+  restarts itself to use it.
+- `autostart on` points at the exact versioned binary rather than a package manager's
+  shortcut. macOS ties permissions to the exact binary, and a shortcut that survives
+  upgrades left behind an entry that looked switched on but matched nothing: no prompt,
+  no permission, and no explanation. Each version now asks properly. After
+  `brew upgrade quietmouse`, run `quietmouse autostart on`.
+
 ## [0.1.6] - 2026-09-15
 
 ### Added
@@ -117,7 +131,8 @@ First release.
   key.
 - No network access, enforced in CI.
 
-[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/benjweaver/quietmouse/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/benjweaver/quietmouse/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/benjweaver/quietmouse/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/benjweaver/quietmouse/compare/v0.1.3...v0.1.4

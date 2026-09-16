@@ -181,6 +181,13 @@ pub fn open_log() -> anyhow::Result<File> {
 }
 
 /// The agent binary, installed next to this one.
+///
+/// Symlinks are resolved, so a package manager's shortcut (Homebrew's
+/// `bin/quietmoused`, which points into a versioned folder) becomes the real
+/// path. macOS ties its privacy permissions to the exact binary, and a shortcut
+/// that stays put across upgrades leaves a stale entry behind that silently
+/// matches nothing: no prompt, no permission, no clue why. A versioned path
+/// makes each upgrade a new entry that macOS asks about properly.
 fn agent_path() -> anyhow::Result<PathBuf> {
     let agent = std::env::current_exe()
         .context("can't find this executable")?
@@ -190,7 +197,7 @@ fn agent_path() -> anyhow::Result<PathBuf> {
         "{AGENT} should be next to this executable, at {}",
         agent.display()
     );
-    Ok(agent)
+    Ok(agent.canonicalize().unwrap_or(agent))
 }
 
 /// Adds or removes the agent in the per-user Run key, which needs no admin rights.

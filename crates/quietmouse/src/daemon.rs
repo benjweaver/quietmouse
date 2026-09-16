@@ -35,13 +35,16 @@ pub fn run(config: Config) -> anyhow::Result<()> {
     let mut skipped: HashSet<String> = HashSet::new();
     // Endpoints that wouldn't open, and when that was last logged.
     let mut unopened: HashMap<String, Instant> = HashMap::new();
+    // Set when quietmouse stops to pick up a permission it has just been given.
+    let mut restart = false;
     log::info!(
         "quietmouse {} running; stop with Ctrl+C or `quietmouse stop`",
         env!("CARGO_PKG_VERSION")
     );
     // Asking here, from the agent itself, is what makes macOS prompt and list
     // quietmouse in its privacy settings, ready to be switched on.
-    for advice in permissions::advice(permissions::request()) {
+    let mut permissions = permissions::request();
+    for advice in permissions::advice(permissions) {
         log::error!("{advice}");
     }
 
@@ -79,6 +82,18 @@ pub fn run(config: Config) -> anyhow::Result<()> {
                 .spawn(move || worker::run(link, &endpoint, shared))?;
             workers.insert(key, handle);
         }
+        if !permissions.all_granted() {
+            let now = permissions::request();
+            if now.newly_granted_since(permissions) {
+                // macOS keeps to the answer it gave this process, so a fresh one
+                // is the only way to use what was just granted. Exiting hands
+                // that to launchd or systemd, which start quietmouse again.
+                log::info!("a permission was granted; restarting to pick it up");
+                shutdown.trigger();
+                restart = true;
+            }
+            permissions = now;
+        }
         if service::stop_requested() {
             log::info!("stop requested");
             shutdown.trigger();
@@ -96,6 +111,12 @@ pub fn run(config: Config) -> anyhow::Result<()> {
         }
     }
     service::clear_stop_request();
+    // A non-zero exit is what asks launchd and systemd to start quietmouse again.
+    if restart {
+        log::info!("restarting");
+        drop(_instance);
+        std::process::exit(1);
+    }
     Ok(())
 }
 

@@ -81,6 +81,21 @@ mod ffi {
     }
 }
 
+/// Whether anything is still refused.
+impl Permissions {
+    pub fn all_granted(self) -> bool {
+        self.input_monitoring && self.accessibility
+    }
+
+    /// Whether `self` has gained a permission that `earlier` lacked. macOS
+    /// decides once per process whether it may read input devices and keeps to
+    /// that answer, so a process refused at startup stays refused however often
+    /// it retries: the only way to pick up a new permission is a fresh process.
+    pub fn newly_granted_since(self, earlier: Self) -> bool {
+        (self.input_monitoring && !earlier.input_monitoring) || (self.accessibility && !earlier.accessibility)
+    }
+}
+
 /// What to do about a permission macOS hasn't granted, for the log.
 pub fn advice(permissions: Permissions) -> Vec<String> {
     let mut advice = Vec::new();
@@ -105,6 +120,29 @@ pub fn advice(permissions: Permissions) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spots_a_permission_being_granted() {
+        let none = Permissions {
+            input_monitoring: false,
+            accessibility: false,
+        };
+        let reading = Permissions {
+            input_monitoring: true,
+            accessibility: false,
+        };
+        let all = Permissions {
+            input_monitoring: true,
+            accessibility: true,
+        };
+        assert!(reading.newly_granted_since(none));
+        assert!(all.newly_granted_since(reading));
+        assert!(!none.newly_granted_since(none));
+        assert!(!none.newly_granted_since(all));
+        assert!(!all.newly_granted_since(all));
+        assert!(all.all_granted());
+        assert!(!reading.all_granted());
+    }
 
     #[test]
     fn advice_covers_each_missing_permission() {
