@@ -36,19 +36,15 @@ pub struct Injector {
 }
 
 impl Injector {
-    /// Starts the output thread. The backend is created straight away so that
-    /// permission prompts (macOS Accessibility) appear at startup rather than on
-    /// the first button press.
+    /// Starts the output thread. It tries to open the backend straight away, so
+    /// that permission prompts appear at startup rather than on the first button
+    /// press, and keeps trying if that's refused, so granting the permission
+    /// later starts working without a restart.
     pub fn spawn() -> std::io::Result<Self> {
         let (tx, rx) = crossbeam_channel::unbounded::<Output>();
         std::thread::Builder::new().name("inject".into()).spawn(move || {
-            let mut backend = match Backend::new() {
-                Ok(backend) => backend,
-                Err(error) => {
-                    log::error!("can't send keystrokes: {error:#}");
-                    return;
-                }
-            };
+            let mut opener = BackendOpener::default();
+            opener.backend();
             let mut pacer = Pacer::new(DESKTOP_SWITCH_GAP);
             for output in rx {
                 let wait = pacer.wait_before(&output, Instant::now());
@@ -56,6 +52,9 @@ impl Injector {
                     log::debug!("waiting {wait:?} for the previous desktop switch to finish");
                     std::thread::sleep(wait);
                 }
+                let Some(backend) = opener.backend() else {
+                    continue;
+                };
                 if let Err(error) = backend.perform(&output) {
                     log::warn!("couldn't send {output:?}: {error:#}");
                 }
@@ -75,6 +74,41 @@ impl Injector {
 /// desktops with animated switching, drop a switch requested while the previous
 /// one is still sliding.
 const DESKTOP_SWITCH_GAP: Duration = Duration::from_millis(450);
+/// How often to try opening the backend again while it's refused, usually
+/// because macOS hasn't been given Accessibility yet.
+const BACKEND_RETRY: Duration = Duration::from_secs(5);
+
+/// Opens the platform backend, retrying while it's refused so that granting the
+/// permission takes effect without restarting quietmouse.
+#[derive(Default)]
+struct BackendOpener {
+    backend: Option<Backend>,
+    last_try: Option<Instant>,
+    reported: bool,
+}
+
+impl BackendOpener {
+    fn backend(&mut self) -> Option<&mut Backend> {
+        if self.backend.is_none() && self.last_try.is_none_or(|last| last.elapsed() >= BACKEND_RETRY) {
+            self.last_try = Some(Instant::now());
+            match Backend::new() {
+                Ok(backend) => {
+                    if self.reported {
+                        log::info!("keystrokes are working now");
+                    }
+                    self.backend = Some(backend);
+                }
+                Err(error) => {
+                    if !self.reported {
+                        log::error!("can't send keystrokes yet: {error:#}");
+                        self.reported = true;
+                    }
+                }
+            }
+        }
+        self.backend.as_mut()
+    }
+}
 
 /// Keeps desktop switches at least `gap` apart, so a quick second swipe waits
 /// its turn instead of being lost mid-animation. Other output is never delayed

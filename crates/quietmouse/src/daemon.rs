@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
@@ -13,11 +13,15 @@ use hidapi::HidApi;
 use crate::config::Config;
 use crate::hid::{self, HidLink};
 use crate::inject::Injector;
-use crate::service;
 use crate::worker::{self, Outcome, Shared};
+use crate::{permissions, service};
 
 /// How often to look for newly attached receivers and devices, and for stop requests.
 const SCAN_INTERVAL: Duration = Duration::from_secs(2);
+/// How often to repeat a complaint about a device that won't open, usually
+/// because macOS hasn't been given Input Monitoring yet. Opening is retried on
+/// every scan, so granting it takes effect without restarting quietmouse.
+const REPEAT_WARNING_EVERY: Duration = Duration::from_secs(60);
 
 pub fn run(config: Config) -> anyhow::Result<()> {
     let _instance = service::lock_instance()?;
@@ -27,12 +31,19 @@ pub fn run(config: Config) -> anyhow::Result<()> {
     let shared = Arc::new(Shared { config, injector });
     let mut api = HidApi::new().context("can't start HID access")?;
     let mut workers: HashMap<String, JoinHandle<Outcome>> = HashMap::new();
-    // Endpoints left alone until they disappear: not HID++, or couldn't be opened.
+    // Endpoints left alone until they disappear, because nothing on them speaks HID++.
     let mut skipped: HashSet<String> = HashSet::new();
+    // Endpoints that wouldn't open, and when that was last logged.
+    let mut unopened: HashMap<String, Instant> = HashMap::new();
     log::info!(
         "quietmouse {} running; stop with Ctrl+C or `quietmouse stop`",
         env!("CARGO_PKG_VERSION")
     );
+    // Asking here, from the agent itself, is what makes macOS prompt and list
+    // quietmouse in its privacy settings, ready to be switched on.
+    for advice in permissions::advice(permissions::request()) {
+        log::error!("{advice}");
+    }
 
     loop {
         reap(&mut workers, &mut skipped);
@@ -41,15 +52,22 @@ pub fn run(config: Config) -> anyhow::Result<()> {
         }
         let endpoints = hid::discover(&api);
         skipped.retain(|key| endpoints.iter().any(|endpoint| &endpoint.key == key));
+        unopened.retain(|key, _| endpoints.iter().any(|endpoint| &endpoint.key == key));
         for endpoint in endpoints {
             if workers.contains_key(&endpoint.key) || skipped.contains(&endpoint.key) {
                 continue;
             }
             let link = match HidLink::open(&api, &endpoint, shutdown.receiver.clone()) {
-                Ok(link) => link,
+                Ok(link) => {
+                    unopened.remove(&endpoint.key);
+                    link
+                }
                 Err(error) => {
-                    log::warn!("{error:#}");
-                    skipped.insert(endpoint.key);
+                    let complained = unopened.get(&endpoint.key);
+                    if complained.is_none_or(|last| last.elapsed() >= REPEAT_WARNING_EVERY) {
+                        log::warn!("{error:#}");
+                        unopened.insert(endpoint.key.clone(), Instant::now());
+                    }
                     continue;
                 }
             };

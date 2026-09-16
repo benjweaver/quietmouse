@@ -7,6 +7,27 @@ from its section below.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-09-15
+
+### Added
+
+- On macOS, quietmouse now asks for Input Monitoring and Accessibility itself, so macOS
+  prompts and lists it in both places ready to switch on, instead of leaving you to find
+  the binary in Finder. This matters after every upgrade, since macOS ties the
+  permissions to the exact binary.
+
+### Changed
+
+- `unsafe` is now denied rather than forbidden, with one exception:
+  `crates/quietmouse/src/permissions.rs`, which declares the three macOS permission
+  calls. They take and return plain integers, with no pointers and nothing to free.
+
+### Fixed
+
+- Granting a permission takes effect without restarting quietmouse. Devices that
+  wouldn't open are retried on every scan rather than given up on, and keystroke output
+  is retried too, with both complaining only once a minute instead of every attempt.
+
 ## [0.1.5] - 2026-09-15
 
 ### Added
@@ -96,7 +117,8 @@ First release.
   key.
 - No network access, enforced in CI.
 
-[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/benjweaver/quietmouse/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/benjweaver/quietmouse/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/benjweaver/quietmouse/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/benjweaver/quietmouse/compare/v0.1.2...v0.1.3

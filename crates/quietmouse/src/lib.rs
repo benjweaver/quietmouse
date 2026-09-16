@@ -14,6 +14,7 @@ mod gesture;
 mod hid;
 mod inject;
 mod keys;
+mod permissions;
 mod service;
 mod worker;
 

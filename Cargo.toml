@@ -3,12 +3,14 @@ resolver = "3"
 members = ["crates/hidpp", "crates/quietmouse"]
 
 [workspace.package]
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 license = "MIT"
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+# Denied rather than forbidden for one exception: crates/quietmouse/src/permissions.rs,
+# which declares the macOS calls that ask for Input Monitoring and Accessibility.
+unsafe_code = "deny"
 warnings = "deny"
 
 [workspace.lints.clippy]

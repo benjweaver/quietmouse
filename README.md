@@ -83,7 +83,7 @@ every HID++ report.
 
 | OS | Needed |
 |----|--------|
-| macOS | **Input Monitoring**, to open the mouse, and **Accessibility**, to send keystrokes. Both are under System Settings → Privacy & Security. Grant them to what runs quietmouse: your terminal while testing, `quietmoused` when it runs at login. An unsigned binary needs granting again after each rebuild. On your own Mac this is just the switches. If your account isn't an administrator, as on many managed work Macs, macOS needs an administrator or your organisation's device management to approve Accessibility, and by default Input Monitoring too. |
+| macOS | **Input Monitoring**, to open the mouse, and **Accessibility**, to send keystrokes. Both are under System Settings → Privacy & Security. quietmouse asks for both when the agent starts, so macOS prompts and lists it there, ready to switch on; granting them takes effect without a restart. They're tied to the exact binary, so an upgrade needs them again: run `quietmouse stop` then `quietmouse start`, and switch the new entries on. On your own Mac this is just the switches. If your account isn't an administrator, as on many managed work Macs, macOS needs an administrator or your organisation's device management to approve Accessibility, and by default Input Monitoring too. |
 | Linux | The packages and `install.sh` install [`packaging/linux/70-quietmouse.rules`](packaging/linux/70-quietmouse.rules) for you; otherwise copy it into `/etc/udev/rules.d` once, with sudo. It gives the logged-in user the Logitech hidraw devices and `/dev/uinput`, which the kernel otherwise keeps for root. Nothing else needs root, and if your distribution already ships Logitech udev rules (for example with Solaar) you may not need this step at all. Keystrokes go through uinput, so they work on X11 and Wayland. |
 | Windows | Nothing extra, and no admin rights. HID++ lives on a vendor-specific HID collection any user can open, and keystrokes go through `SendInput`. One Windows rule applies: a normal program can't send keys into windows running as administrator. |
 
@@ -183,8 +183,11 @@ whenever a receiver says a device came online, or a device reports that it recon
 
 No networking code is in the tree. CI fails if a network-capable crate (HTTP clients,
 TLS, async runtimes, telemetry SDKs) shows up in the dependency tree on any platform;
-see [`scripts/check-offline.sh`](scripts/check-offline.sh). The workspace forbids
-`unsafe` and treats every compiler and clippy warning as an error.
+see [`scripts/check-offline.sh`](scripts/check-offline.sh). Every compiler and clippy
+warning is an error, and `unsafe` is denied everywhere except one file,
+[`permissions.rs`](crates/quietmouse/src/permissions.rs), which declares the three
+macOS calls that ask for Input Monitoring and Accessibility. They take and return plain
+integers, with no pointers and nothing to free.
 
 ## Status
 
