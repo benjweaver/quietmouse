@@ -6,30 +6,46 @@ use hidpp::{DIRECT, Device, Error, Link, Session, receiver};
 
 use crate::hid::Endpoint;
 
+/// What an endpoint turned out to be.
 pub enum Role {
     Receiver,
     /// A device connected directly, answering at this index.
     Direct(u8),
+    /// Something answered, but not HID++ 2.0: there's nothing here to drive.
+    Foreign,
+    /// Nothing answered at all. A directly connected device that's asleep looks
+    /// exactly like this, so it's worth asking again rather than writing it off.
+    Silent,
 }
 
 /// Indices a directly connected device may answer on: most use 0xFF, some wired devices 0x00.
 const DIRECT_INDICES: [u8; 2] = [DIRECT, 0x00];
 
-/// Identifies the endpoint, or `None` if nothing on it speaks HID++ 2.0.
-pub fn probe<L: Link>(session: &mut Session<L>, endpoint: &Endpoint) -> hidpp::Result<Option<Role>> {
+/// Identifies the endpoint, allowing each ping `timeout` to answer.
+///
+/// Silence is kept apart from a reply we don't like: an endpoint that says
+/// nothing may simply be a device that's asleep, which the caller should ask
+/// again rather than skip for good. Somewhere that asks repeatedly can pass a
+/// short `timeout` and let the next attempt do the waiting; a one-shot command
+/// should pass [`hidpp::DEFAULT_TIMEOUT`], since it has no next attempt.
+pub fn probe<L: Link>(session: &mut Session<L>, endpoint: &Endpoint, timeout: Duration) -> hidpp::Result<Role> {
     if endpoint.receiver_kind().is_some() {
-        return Ok(Some(Role::Receiver));
+        return Ok(Role::Receiver);
     }
+    let mut answered = false;
     for index in DIRECT_INDICES {
-        match Device::ping(session, index) {
-            Ok(_) => return Ok(Some(Role::Direct(index))),
+        match session.with_timeout(timeout, |session| Device::ping(session, index)) {
+            Ok(_) => return Ok(Role::Direct(index)),
             // Receivers answer a HID++ 2.0 ping with a HID++ 1.0 error.
-            Err(Error::Hidpp10(_)) if index == DIRECT => return Ok(Some(Role::Receiver)),
+            Err(Error::Hidpp10(_)) if index == DIRECT => return Ok(Role::Receiver),
             Err(error) if error.is_fatal() => return Err(error),
-            Err(error) => log::debug!("{}: nothing at index {index:#04x}: {error}", endpoint.describe()),
+            Err(error) => {
+                answered |= error != Error::Timeout;
+                log::debug!("{}: nothing at index {index:#04x}: {error}", endpoint.describe());
+            }
         }
     }
-    Ok(None)
+    Ok(if answered { Role::Foreign } else { Role::Silent })
 }
 
 /// Indices of the devices online behind a receiver, gathered from the

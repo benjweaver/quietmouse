@@ -1,6 +1,14 @@
 //! Interpreting diverted input: which buttons changed, which way a gesture
 //! swiped, and how many steps the thumb wheel turned.
 
+use std::time::{Duration, Instant};
+
+/// A swipe is one continuous movement. When the pointer sits still for this
+/// long mid-press, the travel so far is forgotten, so slow drift while holding
+/// the button for a tap never adds up to a swipe. Long enough to ride out the
+/// gaps a Bluetooth link puts between reports during a real swipe.
+pub const DRIFT_RESET: Duration = Duration::from_millis(200);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     Up,
@@ -16,40 +24,64 @@ pub fn button_changes(before: &[u16], after: &[u16]) -> (Vec<u16>, Vec<u16>) {
     (pressed, released)
 }
 
-/// One press of a gesture button. A swipe fires as soon as the movement is both
-/// far enough and clearly along one axis, at most once per press. A press with
-/// no swipe is a tap.
+/// One press of a gesture button. A swipe fires as soon as one unbroken
+/// movement is both far enough and clearly along one axis, at most once per
+/// press. A press with no swipe is a tap.
+///
+/// Two things keep a swipe from firing by accident. `threshold` is the deadzone:
+/// nudging the mouse while pressing the button never reaches it. [`DRIFT_RESET`]
+/// is the other half: the travel only counts while the pointer keeps moving, so
+/// holding the button still for a tap can't slowly wander into a swipe.
 #[derive(Debug, Clone)]
 pub struct Gesture {
     dx: i32,
     dy: i32,
     threshold: u16,
     straightness: f32,
+    /// When the last movement arrived, to spot the pointer going still.
+    moved: Option<Instant>,
     far_enough: bool,
     fired: bool,
 }
 
 impl Gesture {
-    /// `threshold` is how far the pointer must travel; `straightness` is how
-    /// much further along one axis than the other it must be before the
-    /// direction counts, where 1 means whichever axis moved more.
+    /// `threshold` is how far the pointer must travel in one movement;
+    /// `straightness` is how much further along one axis than the other it must
+    /// be before the direction counts, where 1 means whichever axis moved more.
     pub fn new(threshold: u16, straightness: f32) -> Self {
         Self {
             dx: 0,
             dy: 0,
             threshold: threshold.max(1),
             straightness: straightness.max(1.0),
+            moved: None,
             far_enough: false,
             fired: false,
         }
     }
 
-    /// Adds pointer movement, returning the swipe direction the first time the
-    /// movement is far enough and pointed clearly enough one way.
-    pub fn movement(&mut self, dx: i16, dy: i16) -> Option<Direction> {
+    /// Adds pointer movement reported at `now`, returning the swipe direction
+    /// the first time one unbroken movement is far enough and pointed clearly
+    /// enough one way.
+    pub fn movement(&mut self, dx: i16, dy: i16, now: Instant) -> Option<Direction> {
         if self.fired {
             return None;
         }
+        // Some devices keep reporting while the pointer sits still. Those say
+        // nothing about whether a movement is still going, so they're ignored
+        // rather than allowed to hold the pause below open.
+        if dx == 0 && dy == 0 {
+            return None;
+        }
+        // A pause means the last movement ended, whatever it added up to.
+        if self
+            .moved
+            .is_some_and(|last| now.saturating_duration_since(last) >= DRIFT_RESET)
+        {
+            self.dx = 0;
+            self.dy = 0;
+        }
+        self.moved = Some(now);
         self.dx = self.dx.saturating_add(i32::from(dx));
         self.dy = self.dy.saturating_add(i32::from(dy));
         let distance_squared = i64::from(self.dx).pow(2) + i64::from(self.dy).pow(2);
@@ -122,42 +154,108 @@ mod tests {
         assert_eq!(button_changes(&[0xC3], &[]), (vec![], vec![0xC3]));
     }
 
+    /// Reports arriving in one unbroken movement, a swipe's worth apart.
+    fn swiping() -> impl FnMut() -> Instant {
+        let mut at = Instant::now();
+        move || {
+            at += DRIFT_RESET / 10;
+            at
+        }
+    }
+
     #[test]
     fn swipes_fire_once_on_the_axis_that_moved_more() {
+        let mut now = swiping();
         let mut gesture = Gesture::new(50, 1.0);
-        assert_eq!(gesture.movement(10, -20), None);
-        assert_eq!(gesture.movement(5, -30), Some(Direction::Up));
-        assert_eq!(gesture.movement(0, -500), None);
+        assert_eq!(gesture.movement(10, -20, now()), None);
+        assert_eq!(gesture.movement(5, -30, now()), Some(Direction::Up));
+        assert_eq!(gesture.movement(0, -500, now()), None);
         assert!(!gesture.is_tap());
 
         let mut sideways = Gesture::new(50, 1.0);
-        assert_eq!(sideways.movement(-60, 10), Some(Direction::Left));
+        assert_eq!(sideways.movement(-60, 10, now()), Some(Direction::Left));
         let mut down = Gesture::new(50, 1.0);
-        assert_eq!(down.movement(0, 50), Some(Direction::Down));
+        assert_eq!(down.movement(0, 50, now()), Some(Direction::Down));
     }
 
     #[test]
     fn small_movement_is_still_a_tap() {
+        let mut now = swiping();
         let mut gesture = Gesture::new(50, 1.0);
-        assert_eq!(gesture.movement(20, 20), None);
+        assert_eq!(gesture.movement(20, 20, now()), None);
         assert!(gesture.is_tap());
     }
 
     #[test]
     fn straightness_waits_for_a_clear_direction() {
+        let mut now = swiping();
         let mut gesture = Gesture::new(50, 2.0);
         // Far enough, but nearly diagonal: no direction yet.
-        assert_eq!(gesture.movement(45, 40), None);
+        assert_eq!(gesture.movement(45, 40, now()), None);
         // Carrying on sideways settles it.
-        assert_eq!(gesture.movement(60, 0), Some(Direction::Right));
+        assert_eq!(gesture.movement(60, 0, now()), Some(Direction::Right));
         assert!(!gesture.is_tap());
     }
 
     #[test]
     fn a_swipe_that_never_settles_is_not_a_tap() {
+        let mut now = swiping();
         let mut gesture = Gesture::new(50, 2.0);
-        assert_eq!(gesture.movement(45, 45), None);
+        assert_eq!(gesture.movement(45, 45, now()), None);
         assert!(!gesture.is_tap());
+    }
+
+    #[test]
+    fn drift_between_pauses_never_adds_up_to_a_swipe() {
+        let start = Instant::now();
+        let mut gesture = Gesture::new(50, 1.0);
+        // Holding the button still, wandering a little every so often: each
+        // nudge is well inside the deadzone, and the pauses forget the last one.
+        for step in 1..20 {
+            let at = start + DRIFT_RESET * step;
+            assert_eq!(gesture.movement(20, 5, at), None, "drift fired a swipe at step {step}");
+        }
+        assert!(gesture.is_tap());
+    }
+
+    #[test]
+    fn reports_with_no_movement_dont_hold_the_pause_open() {
+        let start = Instant::now();
+        let mut gesture = Gesture::new(50, 1.0);
+        assert_eq!(gesture.movement(40, 0, start), None);
+        // A device chattering away while the pointer sits still mustn't make
+        // the drift look like one continuous movement.
+        for step in 1..10 {
+            assert_eq!(gesture.movement(0, 0, start + DRIFT_RESET / 4 * step), None);
+        }
+        let later = start + DRIFT_RESET;
+        assert_eq!(
+            gesture.movement(40, 0, later),
+            None,
+            "the pause should have reset the travel"
+        );
+        assert!(gesture.is_tap());
+    }
+
+    #[test]
+    fn a_pause_mid_press_starts_the_next_swipe_afresh() {
+        let start = Instant::now();
+        let mut gesture = Gesture::new(50, 1.0);
+        // Half a swipe left, then a pause.
+        assert_eq!(gesture.movement(-40, 0, start), None);
+        // Carrying on rightwards after the pause is its own movement, so it
+        // doesn't cancel out against the travel before it.
+        let after = start + DRIFT_RESET;
+        assert_eq!(gesture.movement(50, 0, after), Some(Direction::Right));
+    }
+
+    #[test]
+    fn a_swipe_rides_out_gaps_shorter_than_the_reset() {
+        let start = Instant::now();
+        let mut gesture = Gesture::new(50, 1.0);
+        assert_eq!(gesture.movement(30, 0, start), None);
+        let hiccup = start + DRIFT_RESET - Duration::from_millis(1);
+        assert_eq!(gesture.movement(25, 0, hiccup), Some(Direction::Right));
     }
 
     #[test]

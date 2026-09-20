@@ -19,7 +19,7 @@ mod testing;
 pub use device::{Device, DeviceEvent};
 pub use error::{Error, Result, hidpp10};
 pub use report::{LONG_ID, Report, SHORT_ID, VERY_LONG_ID};
-pub use session::{Link, Session};
+pub use session::{DEFAULT_TIMEOUT, Link, Session};
 
 /// Logitech's USB vendor id.
 pub const LOGITECH_VID: u16 = 0x046D;

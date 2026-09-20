@@ -23,12 +23,56 @@ use crate::hid::Endpoint;
 use crate::inject::{Injector, Output};
 use crate::keys::Desktop;
 
-/// A device that couldn't be configured (usually still waking up) is retried this often...
-const RETRY_DELAY: Duration = Duration::from_secs(1);
-/// ...this many times.
-const MAX_ATTEMPTS: u32 = 5;
+/// How long to give an endpoint to say whether anything is there. Short,
+/// because the answer comes back in milliseconds when a device is awake, and
+/// when it isn't, asking again shortly beats waiting out the usual timeout.
+const PROBE_TIMEOUT: Duration = Duration::from_millis(300);
+/// How soon to ask again after a device doesn't answer, usually because it's
+/// still waking up...
+const FIRST_RETRY: Duration = Duration::from_millis(250);
+/// ...doubling up to this. A mouse left asleep then costs one request every few
+/// seconds, and starts working within that of being woken.
+const MAX_RETRY: Duration = Duration::from_secs(5);
 /// Wait when nothing is scheduled; any report or shutdown wakes the worker sooner.
 const IDLE_WAIT: Duration = Duration::from_secs(3600);
+
+/// A retry schedule that keeps doubling up to a cap.
+///
+/// Asleep and broken look alike over HID++: both just stop answering. So nothing
+/// is ever written off, it's only asked less often, and the moment a device
+/// starts answering again its settings go back on.
+#[derive(Debug, Clone, Copy)]
+struct Backoff {
+    due: Instant,
+    delay: Duration,
+    /// Set on the first wait to reach [`MAX_RETRY`], so a device that has gone
+    /// quiet for good is reported once instead of on every retry.
+    just_capped: bool,
+}
+
+impl Backoff {
+    fn first() -> Self {
+        Self::after(FIRST_RETRY, FIRST_RETRY >= MAX_RETRY)
+    }
+
+    /// The next wait, twice as long, up to [`MAX_RETRY`].
+    fn next(self) -> Self {
+        let delay = (self.delay * 2).min(MAX_RETRY);
+        Self::after(delay, delay >= MAX_RETRY && self.delay < MAX_RETRY)
+    }
+
+    fn after(delay: Duration, just_capped: bool) -> Self {
+        Self {
+            due: Instant::now() + delay,
+            delay,
+            just_capped,
+        }
+    }
+
+    fn is_due(self, now: Instant) -> bool {
+        self.due <= now
+    }
+}
 
 /// State shared by every worker.
 pub struct Shared {
@@ -49,10 +93,12 @@ pub fn run<L: Link>(link: L, endpoint: &Endpoint, shared: Arc<Shared>) -> Outcom
     let mut session = Session::new(link);
     let mut worker = Worker {
         shared,
+        endpoint,
         devices: HashMap::new(),
         retries: HashMap::new(),
+        reprobe: None,
     };
-    let error = match worker.start(&mut session, endpoint) {
+    let error = match worker.start(&mut session) {
         Ok(true) => worker.serve(&mut session),
         Ok(false) => {
             log::debug!("{} doesn't speak HID++ 2.0; ignoring it", endpoint.describe());
@@ -68,33 +114,53 @@ pub fn run<L: Link>(link: L, endpoint: &Endpoint, shared: Arc<Shared>) -> Outcom
     Outcome::Disconnected
 }
 
-struct Worker {
+struct Worker<'a> {
     shared: Arc<Shared>,
+    endpoint: &'a Endpoint,
     devices: HashMap<u8, DeviceState>,
     retries: HashMap<u8, Retry>,
+    /// Set while the endpoint itself hasn't answered yet, so it's asked again.
+    reprobe: Option<Backoff>,
 }
 
 struct Retry {
-    due: Instant,
-    attempts: u32,
+    backoff: Backoff,
     wireless_pid: Option<u16>,
 }
 
-impl Worker {
+impl Worker<'_> {
     /// Returns `false` if the endpoint isn't worth serving.
-    fn start<L: Link>(&mut self, session: &mut Session<L>, endpoint: &Endpoint) -> hidpp::Result<bool> {
-        match connect::probe(session, endpoint)? {
-            None => Ok(false),
-            Some(Role::Receiver) => {
-                log::info!("found {}", endpoint.describe());
+    fn start<L: Link>(&mut self, session: &mut Session<L>) -> hidpp::Result<bool> {
+        match self.probe(session)? {
+            Some(true) => Ok(true),
+            // Nothing answered. Most likely a device that's asleep, so the
+            // worker stays put and keeps asking rather than giving the endpoint
+            // up: waking the mouse is then all it takes.
+            None => {
+                log::debug!("{} isn't answering yet; waiting for it", self.endpoint.describe());
+                self.reprobe = Some(Backoff::first());
+                Ok(true)
+            }
+            Some(false) => Ok(false),
+        }
+    }
+
+    /// Works out what the endpoint is and sets it up. `None` means nothing
+    /// answered; `Some(false)` that it answered but doesn't speak HID++ 2.0.
+    fn probe<L: Link>(&mut self, session: &mut Session<L>) -> hidpp::Result<Option<bool>> {
+        match connect::probe(session, self.endpoint, PROBE_TIMEOUT)? {
+            Role::Foreign => Ok(Some(false)),
+            Role::Silent => Ok(None),
+            Role::Receiver => {
+                log::info!("found {}", self.endpoint.describe());
                 // Paired devices answer with connection notices, handled in `handle`.
                 tolerate(receiver::enable_notifications(session), "enable receiver notifications")?;
                 tolerate(receiver::announce_devices(session), "list the receiver's devices")?;
-                Ok(true)
+                Ok(Some(true))
             }
-            Some(Role::Direct(index)) => {
+            Role::Direct(index) => {
                 self.connect(session, index, None)?;
-                Ok(true)
+                Ok(Some(true))
             }
         }
     }
@@ -103,23 +169,51 @@ impl Worker {
     fn serve<L: Link>(&mut self, session: &mut Session<L>) -> Error {
         loop {
             let wait = self
-                .retries
-                .values()
-                .map(|retry| retry.due)
-                .min()
+                .next_due()
                 .map_or(IDLE_WAIT, |due| due.saturating_duration_since(Instant::now()));
             let handled = match session.next_event(wait) {
                 Ok(Some(report)) => self.handle(session, &report),
                 Ok(None) => Ok(()),
                 Err(error) => return error,
             };
-            if let Err(error) = handled.and_then(|()| self.retry_due(session)) {
+            if let Err(error) = handled.and_then(|()| self.work_due(session)) {
                 if error.is_fatal() {
                     return error;
                 }
                 log::warn!("{error}");
             }
         }
+    }
+
+    /// When the next retry falls due, of any kind.
+    fn next_due(&self) -> Option<Instant> {
+        self.retries
+            .values()
+            .map(|retry| retry.backoff.due)
+            .chain(self.reprobe.map(|backoff| backoff.due))
+            .min()
+    }
+
+    /// Runs whatever is due: asking a silent endpoint again, and configuring
+    /// devices that weren't ready last time.
+    fn work_due<L: Link>(&mut self, session: &mut Session<L>) -> hidpp::Result<()> {
+        if let Some(backoff) = self.reprobe.filter(|backoff| backoff.is_due(Instant::now())) {
+            self.reprobe = None;
+            match self.probe(session)? {
+                // Still nothing; ask again later.
+                None => {
+                    let next = backoff.next();
+                    if next.just_capped {
+                        log::info!("{} still isn't answering; still trying", self.endpoint.describe());
+                    }
+                    self.reprobe = Some(next);
+                }
+                Some(true) => log::debug!("{} started answering", self.endpoint.describe()),
+                // It answered at last, but with nothing we can drive.
+                Some(false) => log::debug!("{} doesn't speak HID++ 2.0; ignoring it", self.endpoint.describe()),
+            }
+        }
+        self.retry_due(session)
     }
 
     fn handle<L: Link>(&mut self, session: &mut Session<L>, report: &Report) -> hidpp::Result<()> {
@@ -163,22 +257,18 @@ impl Worker {
         if error.is_fatal() {
             return Err(error);
         }
-        let attempts = self.retries.get(&index).map_or(0, |retry| retry.attempts) + 1;
-        if attempts < MAX_ATTEMPTS {
-            log::debug!("device {index:#04x} not ready ({error}); retrying");
-            let due = Instant::now() + RETRY_DELAY;
-            self.retries.insert(
-                index,
-                Retry {
-                    due,
-                    attempts,
-                    wireless_pid,
-                },
-            );
-        } else {
-            self.retries.remove(&index);
-            log::warn!("giving up on device {index:#04x}: {error}");
+        let backoff = self
+            .retries
+            .get(&index)
+            .map_or_else(Backoff::first, |retry| retry.backoff.next());
+        log::debug!(
+            "device {index:#04x} not ready ({error}); asking again in {:?}",
+            backoff.delay
+        );
+        if backoff.just_capped {
+            log::info!("device {index:#04x} isn't answering ({error}); still trying");
         }
+        self.retries.insert(index, Retry { backoff, wireless_pid });
         Ok(())
     }
 
@@ -210,7 +300,7 @@ impl Worker {
         let due: Vec<(u8, Option<u16>)> = self
             .retries
             .iter()
-            .filter(|(_, retry)| retry.due <= now)
+            .filter(|(_, retry)| retry.backoff.is_due(now))
             .map(|(&index, retry)| (index, retry.wireless_pid))
             .collect();
         for (index, wireless_pid) in due {
@@ -366,7 +456,7 @@ impl DeviceState {
             }
             DeviceEvent::RawXy { dx, dy } => {
                 if let Some((cid, gesture)) = &mut self.gesture
-                    && let Some(direction) = gesture.movement(dx, dy)
+                    && let Some(direction) = gesture.movement(dx, dy, Instant::now())
                 {
                     let cid = *cid;
                     log::debug!("{}: swipe {direction:?}", self.device.name());
@@ -625,6 +715,27 @@ mod tests {
             diverted_resolution: 0,
         };
         assert_eq!(default_thumb_step(odd), 1);
+    }
+
+    #[test]
+    fn backoff_doubles_to_the_cap_and_reports_it_once() {
+        let mut backoff = Backoff::first();
+        assert_eq!(backoff.delay, FIRST_RETRY);
+        assert!(!backoff.just_capped);
+        let mut capped = 0;
+        for _ in 0..20 {
+            backoff = backoff.next();
+            capped += u32::from(backoff.just_capped);
+        }
+        assert_eq!(backoff.delay, MAX_RETRY);
+        assert_eq!(capped, 1, "a long silence should be reported exactly once");
+    }
+
+    #[test]
+    fn a_retry_is_only_due_once_its_wait_has_passed() {
+        let backoff = Backoff::first();
+        assert!(!backoff.is_due(Instant::now()));
+        assert!(backoff.is_due(Instant::now() + FIRST_RETRY * 2));
     }
 
     #[test]

@@ -21,7 +21,8 @@ at all. It talks HID++ directly to the device, and nothing else.
   control by ID, to key chords, media keys, clicks, shell commands, DPI changes, or
   switching Easy-Switch channel.
 - **Gestures:** hold a button and swipe up, down, left or right, with a separate
-  action for a plain tap.
+  action for a plain tap. A swipe has to clear a deadzone in one unbroken
+  movement, so pressing the button doesn't fire one by accident.
 - **Receivers and Bluetooth:** Unifying, Bolt and Lightspeed receivers, plus direct
   Bluetooth and USB connections. Settings are re-applied when a device wakes or
   reconnects, and diverted buttons are handed back to the device when quietmouse exits.
@@ -106,7 +107,8 @@ thumbwheel = { left = { media = "volume_down" }, right = { media = "volume_up" }
 tap = "overview"                     # Mission Control / Task View / Activities
 left = "desktop_left"                # the Space / virtual desktop / workspace on the left
 right = "desktop_right"
-threshold = 30                       # how far to move before a swipe counts
+threshold = 150                      # how far to move before a swipe counts, in DPI
+                                     # counts, so about 4mm at 1000 dpi
 straightness = 1.5                   # how much further one way than the other it must be
 
 [device.buttons.mode_shift]
@@ -169,7 +171,7 @@ crates/quietmouse  the app
   daemon, worker     one worker thread per receiver or device; applies profiles and re-applies on wake
   service            single instance, stop requests, agent log, per-user start at log-in
   bin/quietmoused    the windowless background agent
-  gesture            swipe detection and thumb wheel steps
+  gesture            swipe detection (deadzone, direction, drift) and thumb wheel steps
   inject             keystrokes: enigo on macOS and Windows, uinput on Linux
   config, keys       TOML schema, validation, key chords
 ```
@@ -178,6 +180,19 @@ Button remapping uses the device's own *diversion*: the device reports a diverte
 control to software instead of acting on it, and for gestures it also reports pointer
 movement while the button is held. Diversion is volatile, so quietmouse re-applies it
 whenever a receiver says a device came online, or a device reports that it reconnected.
+
+A swipe is one unbroken movement past `threshold`, and it fires the moment it gets
+there rather than on release, so the action lands while you're still moving. Two
+things stop that firing by accident: the deadzone itself, which the nudge from
+pressing the button doesn't reach, and a 200ms pause resetting the travel, so
+holding the button still can't slowly drift into a swipe. `straightness` decides
+how much further one axis has to go than the other before a direction counts; a
+flick that stays too diagonal does nothing rather than guessing.
+
+Asleep and broken look the same over HID++ — both just stop answering — so
+quietmouse never writes a device off. A device that doesn't answer is asked again
+on a backoff that tops out at five seconds, for as long as it stays attached, and
+its settings go back on within that of it waking up.
 
 ### Offline, and staying that way
 

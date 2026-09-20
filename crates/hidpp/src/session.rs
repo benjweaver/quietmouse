@@ -14,7 +14,9 @@ pub trait Link {
     fn recv(&mut self, timeout: Duration) -> Result<Option<Report>>;
 }
 
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(2);
+/// How long a request waits for its reply. Generous, because a device that has
+/// just woken can take a moment to answer its first one.
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(2);
 /// Notifications held back while waiting for replies; past this the oldest are dropped.
 const BACKLOG_LIMIT: usize = 256;
 
@@ -63,6 +65,16 @@ impl<L: Link> Session<L> {
                 None => self.defer(report),
             }
         }
+    }
+
+    /// Runs `requests` with a different reply timeout, restoring the usual one
+    /// afterwards. For requests where a slow answer is better retried than
+    /// waited out, such as asking whether a device is awake yet.
+    pub fn with_timeout<T>(&mut self, timeout: Duration, requests: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+        let usual = std::mem::replace(&mut self.timeout, timeout);
+        let result = requests(self);
+        self.timeout = usual;
+        result
     }
 
     /// Sends `report` without waiting for a reply.
@@ -162,6 +174,19 @@ mod tests {
     fn times_out_without_a_reply() {
         let mut session = Session::new(MockLink::new(|_| Vec::new()));
         assert_eq!(session.call(0x01, 0x03, 0x1, &[]), Err(Error::Timeout));
+    }
+
+    #[test]
+    fn a_shorter_timeout_only_lasts_for_the_requests_it_wraps() {
+        let mut session = Session::new(MockLink::new(|_| Vec::new()));
+        let brief = Duration::from_millis(10);
+        let inside = session.with_timeout(brief, |session| Ok(session.timeout));
+        assert_eq!(inside, Ok(brief));
+        assert_eq!(session.timeout, DEFAULT_TIMEOUT);
+        // And it is put back even when the requests fail.
+        let failed = session.with_timeout(brief, |session| session.call(0x01, 0x03, 0x1, &[]));
+        assert_eq!(failed, Err(Error::Timeout));
+        assert_eq!(session.timeout, DEFAULT_TIMEOUT);
     }
 
     #[test]

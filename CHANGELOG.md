@@ -7,13 +7,48 @@ from its section below.
 
 ## [Unreleased]
 
+### Fixed
+
+- A device that was merely asleep when quietmouse first reached it is no longer
+  written off. Probing an endpoint that didn't answer was treated the same as
+  finding nothing that speaks HID++ 2.0, and the endpoint was then skipped until
+  it detached entirely. Waking a Mac is exactly the case that hits this: macOS
+  re-enumerates a Bluetooth mouse the moment the link is back, a little before
+  the mouse itself will answer, so the buttons stayed dead until the mouse next
+  slept and woke. Silence and a reply we can't use are now told apart, and a
+  silent endpoint is asked again rather than skipped.
+- Working out what's on an endpoint no longer waits two seconds per attempt for
+  a device that isn't awake. An awake device answers in milliseconds, so the
+  daemon now allows 300ms and asks again rather than waiting out a timeout that
+  only exists for slow first replies. One-shot commands (`list`, `info`,
+  `events`) keep the full wait, having no second attempt to fall back on.
+- A device that wouldn't configure is no longer given up on after five tries.
+  Since only a receiver's connection notice could start it off again, a directly
+  connected mouse that was slow to wake stayed unconfigured for as long as it
+  remained attached. Retries now back off from 250ms to five seconds and carry
+  on for as long as the device is there, so settings go back on within a few
+  seconds of it waking.
+
 ### Changed
 
+- Swipes take a firmer movement to fire. The default gesture `threshold` rises
+  from 30 to 150 sensor counts — about 4mm at 1000 dpi, where 30 was under a
+  millimetre and the nudge from pressing the button could reach it on its own.
+- A swipe now has to clear the threshold in one unbroken movement: pausing for
+  200ms mid-press forgets the travel so far. Holding the gesture button still
+  for a tap used to accumulate drift until it crossed the threshold and fired a
+  swipe instead.
 - Swipes need less of a lean before they pick a direction: the default
   `straightness` drops from 2.0 to 1.5, after testing on an MX Master 3S. A
   sideways flick that arcs a little now fires as you commit to it, instead of
   waiting for one axis to get twice as far as the other. Set `straightness`
   yourself to keep the old behaviour.
+- Desktop actions on macOS no longer read and parse
+  `com.apple.symbolichotkeys.plist` on every press. It's kept between presses and
+  re-read when its timestamp moves, so a rebound shortcut still takes effect
+  without a restart, and a run of quick swipes doesn't queue behind the disk each
+  time. The CoreGraphics event source is built once too, rather than twice per
+  keystroke.
 
 ## [0.1.9] - 2026-09-15
 

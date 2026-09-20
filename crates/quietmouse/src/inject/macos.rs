@@ -6,7 +6,9 @@
 //! shortcut keeps working, and a disabled one is reported instead of silently
 //! doing nothing. macOS has no public API to switch Spaces directly.
 
-use std::path::PathBuf;
+use std::cell::RefCell;
+use std::path::Path;
+use std::time::SystemTime;
 
 use anyhow::{anyhow, bail};
 use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation, CGKeyCode};
@@ -52,7 +54,7 @@ fn hotkey(desktop: Desktop) -> Hotkey {
 /// user's own binding if they changed it, the system default otherwise.
 pub fn perform_desktop(desktop: Desktop) -> anyhow::Result<()> {
     let hotkey = hotkey(desktop);
-    let registered = read_preferences().and_then(|preferences| registered(&preferences, hotkey.id));
+    let registered = with_preferences(|preferences| registered(preferences?, hotkey.id));
     if registered.is_some_and(|entry| !entry.enabled) {
         bail!(
             "the \"{}\" shortcut is off; turn it on in System Settings → Keyboard → Keyboard Shortcuts → Mission Control",
@@ -77,15 +79,75 @@ pub fn post_named_key(chord: &Chord) -> Option<anyhow::Result<()>> {
 }
 
 fn post(code: CGKeyCode, flags: CGEventFlags) -> anyhow::Result<()> {
+    let source = event_source()?;
     for key_down in [true, false] {
-        let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
-            .map_err(|()| anyhow!("can't create a CoreGraphics event source"))?;
-        let event = CGEvent::new_keyboard_event(source, code, key_down)
+        let event = CGEvent::new_keyboard_event(source.clone(), code, key_down)
             .map_err(|()| anyhow!("can't create a key event for code {code:#04x}"))?;
         event.set_flags(flags);
         event.post(CGEventTapLocation::HID);
     }
     Ok(())
+}
+
+thread_local! {
+    /// The event source every keystroke is posted from, built once. Creating
+    /// one per key put two trips into CoreGraphics in front of each press, on
+    /// the one thread a gesture has to get through to reach the screen.
+    static EVENT_SOURCE: RefCell<Option<CGEventSource>> = const { RefCell::new(None) };
+
+    /// The shortcut preferences as last read; see [`with_preferences`].
+    static PREFERENCES_CACHE: RefCell<Option<Preferences>> = const { RefCell::new(None) };
+}
+
+fn event_source() -> anyhow::Result<CGEventSource> {
+    EVENT_SOURCE.with_borrow_mut(|cached| match cached {
+        Some(source) => Ok(source.clone()),
+        None => {
+            let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+                .map_err(|()| anyhow!("can't create a CoreGraphics event source"))?;
+            Ok(cached.insert(source).clone())
+        }
+    })
+}
+
+/// The shortcut preferences as they were when last read, and when that was.
+struct Preferences {
+    /// The file's timestamp then, or `None` if there was no file.
+    modified: Option<SystemTime>,
+    value: Option<plist::Value>,
+}
+
+/// Hands `read` the shortcut preferences, going back to the file only when its
+/// timestamp has moved.
+///
+/// Reading and parsing the plist on every press put disk work in front of a
+/// keystroke that should feel immediate, and a run of quick swipes paid for it
+/// each time. Watching the timestamp keeps a rebound shortcut working without a
+/// restart, which is the whole point of reading the file at all.
+fn with_preferences<T>(read: impl FnOnce(Option<&plist::Value>) -> T) -> T {
+    let Some(path) = dirs::home_dir().map(|home| home.join(PREFERENCES)) else {
+        return read(None);
+    };
+    let modified = modified(&path);
+    PREFERENCES_CACHE.with_borrow_mut(|cached| {
+        if !is_current(cached.as_ref(), modified) {
+            *cached = Some(Preferences {
+                modified,
+                value: read_preferences(&path),
+            });
+        }
+        read(cached.as_ref().and_then(|cached| cached.value.as_ref()))
+    })
+}
+
+/// Whether what was read last still matches a file with this timestamp. A
+/// missing file has no timestamp, and staying missing counts as unchanged.
+fn is_current(cached: Option<&Preferences>, modified: Option<SystemTime>) -> bool {
+    cached.is_some_and(|cached| cached.modified == modified)
+}
+
+fn modified(path: &Path) -> Option<SystemTime> {
+    std::fs::metadata(path).and_then(|meta| meta.modified()).ok()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,9 +157,8 @@ struct Registered {
     binding: Option<(CGKeyCode, u64)>,
 }
 
-fn read_preferences() -> Option<plist::Value> {
-    let path: PathBuf = dirs::home_dir()?.join(PREFERENCES);
-    match plist::Value::from_file(&path) {
+fn read_preferences(path: &Path) -> Option<plist::Value> {
+    match plist::Value::from_file(path) {
         Ok(preferences) => Some(preferences),
         Err(error) => {
             log::debug!("can't read {}: {error}", path.display());
@@ -171,6 +232,8 @@ fn named_key(key: Key) -> Option<(CGKeyCode, CGEventFlags)> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     const PREFERENCES_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -222,6 +285,27 @@ mod tests {
             })
         );
         assert_eq!(registered(&preferences, 32), None);
+    }
+
+    #[test]
+    fn preferences_are_re_read_only_when_the_file_changes() {
+        let now = SystemTime::now();
+        let cached = Preferences {
+            modified: Some(now),
+            value: None,
+        };
+        assert!(is_current(Some(&cached), Some(now)));
+        assert!(!is_current(Some(&cached), Some(now + Duration::from_secs(1))));
+        // A shortcut rebound for the first time creates the file.
+        assert!(!is_current(Some(&cached), None));
+        let missing = Preferences {
+            modified: None,
+            value: None,
+        };
+        assert!(is_current(Some(&missing), None));
+        assert!(!is_current(Some(&missing), Some(now)));
+        // Nothing read yet.
+        assert!(!is_current(None, None));
     }
 
     #[test]

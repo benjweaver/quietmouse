@@ -49,16 +49,16 @@ fn scan(stop: Receiver<()>) -> anyhow::Result<Vec<Found>> {
             }
         };
         let mut session = Session::new(link);
-        let (receiver, indices) = match connect::probe(&mut session, &endpoint) {
-            Ok(Some(Role::Receiver)) => match connect::receiver_devices(&mut session, ANNOUNCE_WAIT) {
+        let (receiver, indices) = match connect::probe(&mut session, &endpoint, hidpp::DEFAULT_TIMEOUT) {
+            Ok(Role::Receiver) => match connect::receiver_devices(&mut session, ANNOUNCE_WAIT) {
                 Ok(indices) => (true, indices),
                 Err(error) => {
                     log::warn!("{}: {error}", endpoint.describe());
                     (true, Vec::new())
                 }
             },
-            Ok(Some(Role::Direct(index))) => (false, vec![index]),
-            Ok(None) => continue,
+            Ok(Role::Direct(index)) => (false, vec![index]),
+            Ok(Role::Foreign | Role::Silent) => continue,
             Err(error) => {
                 log::warn!("{}: {error}", endpoint.describe());
                 continue;

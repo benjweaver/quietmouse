@@ -13,9 +13,13 @@ use crate::gesture::Direction;
 use crate::keys::{Chord, MediaKey, MouseButton};
 
 /// Movement, in sensor counts, before a held gesture button counts as a swipe.
-/// Low, so a swipe fires as soon as you commit to it; [`DEFAULT_GESTURE_STRAIGHTNESS`]
-/// is what keeps a near-diagonal flick from picking the wrong direction.
-pub const DEFAULT_GESTURE_THRESHOLD: u16 = 30;
+/// Counts are DPI, so at 1000 DPI this is roughly 4mm: far enough that nudging
+/// the mouse as you press the button can't reach it, short enough that a real
+/// flick fires well before you've finished making it.
+/// [`DEFAULT_GESTURE_STRAIGHTNESS`] then keeps a near-diagonal flick from
+/// picking the wrong direction, and [`crate::gesture::DRIFT_RESET`] keeps a
+/// held button from wandering into one.
+pub const DEFAULT_GESTURE_THRESHOLD: u16 = 150;
 /// Default gap between desktop switches: long enough for the switch to land,
 /// short enough that back-to-back swipes don't feel held up.
 pub const DEFAULT_DESKTOP_SWITCH_GAP_MS: u16 = 100;
@@ -367,7 +371,9 @@ up = "overview"
 down = "app_windows"
 left = "desktop_left"        # swipe left to go to the desktop on the left
 right = "desktop_right"
-# threshold = 30             # how far to move before a swipe counts
+# threshold = 150            # how far to move before a swipe counts, in DPI counts,
+                             # so about 4mm at 1000 dpi; raise it if swipes fire
+                             # when you meant to tap
 # straightness = 1.5         # how much further one way than the other it must be;
                              # 1.0 takes whichever way moved more
 
