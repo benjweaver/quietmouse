@@ -5,14 +5,14 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
-## [Unreleased]
+## [0.1.13] - 2026-09-21
 
 ### Fixed
 
 - A tap of the gesture button straight after moving the mouse no longer fires
   as a swipe. When the button goes down, the mouse hands over the movement its
   sensor gathered just before the press in the first report of that press. On
-  an MX Master 3S that was 100 to 750 counts after moving over to click a
+  an MX Master 3S that was 100 to 900 counts after moving over to click a
   window, against one or two per report while the button is held, which crossed
   the swipe threshold at once and swiped back the way the hand had come. With
   a single desktop, the misfired switch did nothing visible, so it looked like
@@ -300,7 +300,8 @@ First release.
   key.
 - No network access, enforced in CI.
 
-[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.12...HEAD
+[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.13...HEAD
+[0.1.13]: https://github.com/benjweaver/quietmouse/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/benjweaver/quietmouse/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/benjweaver/quietmouse/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/benjweaver/quietmouse/compare/v0.1.9...v0.1.10
