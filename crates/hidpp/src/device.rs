@@ -88,6 +88,27 @@ impl Device {
         Ok((reply.param(0), reply.param(1)))
     }
 
+    /// Whether the device still has its features where this found them, as far
+    /// as one request can tell: the known feature at the highest index is still
+    /// there. Features are numbered in order, so adding or removing one before
+    /// it, as a firmware update can, moves it, and a request sent to where a
+    /// feature used to be would reach a different one.
+    pub fn still_matches<L: Link>(&self, session: &mut Session<L>) -> Result<bool> {
+        let Some((&feature, &index)) = self.features.iter().max_by_key(|&(_, &index)| index) else {
+            return Ok(true);
+        };
+        Ok(lookup(session, self.index, feature)? == Some(index))
+    }
+
+    /// The same device, addressed at `index`. A device connected directly
+    /// answers at both 0xFF and 0x00, and which answers first can differ from
+    /// one connection to the next.
+    #[must_use]
+    pub fn at(mut self, index: u8) -> Self {
+        self.index = index;
+        self
+    }
+
     pub fn index(&self) -> u8 {
         self.index
     }
@@ -234,6 +255,25 @@ mod tests {
         let mut session = Session::new(link);
         let device = Device::open(&mut session, 0xFF).unwrap();
         (session, device)
+    }
+
+    #[test]
+    fn notices_features_that_moved() {
+        let (mut session, device) = open_fake();
+        assert!(device.still_matches(&mut session).unwrap());
+        // The same mouse after an update that put a feature ahead of the others.
+        let mut updated = Session::new(fake_device(
+            0xFF,
+            &[
+                crate::features::BATTERY_STATUS,
+                DEVICE_NAME,
+                REPROG_CONTROLS_V4,
+                THUMB_WHEEL,
+                WIRELESS_DEVICE_STATUS,
+            ],
+            |_, _, _| None,
+        ));
+        assert!(!device.still_matches(&mut updated).unwrap());
     }
 
     #[test]

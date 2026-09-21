@@ -5,6 +5,21 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Changed
+
+- The gesture button works within about a twentieth of a second of a mouse
+  reconnecting, where it took about half a second, so a tap straight after
+  switching the mouse back no longer goes missing. Setting a mouse up meant
+  33 round trips over Bluetooth, and the buttons came last. quietmouse now
+  remembers a directly connected mouse's features and buttons across
+  reconnects, checking with one request that its features haven't moved, as
+  a firmware update can make them, and diverts the buttons before anything
+  else. On an MX Master 3S the buttons now work after 3 round trips and the
+  whole setup takes about 10. The first connection after quietmouse starts
+  still learns everything.
+
 ## [0.1.15] - 2026-09-21
 
 ### Changed

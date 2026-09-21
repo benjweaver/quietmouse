@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::process::Command;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -78,6 +78,19 @@ impl Backoff {
 pub struct Shared {
     pub config: Config,
     pub injector: Injector,
+    /// Devices connected directly rather than through a receiver, by product ID.
+    /// Their worker ends whenever they go away, so what it learned is kept here.
+    pub known: Mutex<HashMap<u16, Learned>>,
+}
+
+/// What setting a device up taught quietmouse about it: its features and its
+/// buttons. Neither changes while it's away, and asking again took 27 of the 33
+/// round trips of setting up an MX Master 3S over Bluetooth, half a second
+/// during which its buttons did nothing.
+#[derive(Clone)]
+pub struct Learned {
+    device: Device,
+    controls: Option<Vec<Control>>,
 }
 
 /// Why a worker stopped.
@@ -287,16 +300,84 @@ impl Worker<'_> {
         let known = self
             .devices
             .remove(&index)
-            .filter(|state| wireless_pid.is_none() || state.wireless_pid == wireless_pid);
-        let (device, known_pid) = match known {
-            Some(state) => (state.device, state.wireless_pid),
-            None => (Device::open(session, index)?, None),
+            .filter(|state| wireless_pid.is_none() || state.wireless_pid == wireless_pid)
+            .map(|state| {
+                let learned = Learned {
+                    device: state.device,
+                    controls: state.controls,
+                };
+                (learned, state.wireless_pid)
+            });
+        let (learned, known_pid, from_memory) = match known {
+            Some((learned, known_pid)) => (learned, known_pid, false),
+            None => match self.remembered(session, index)? {
+                Some(learned) => (learned, None, true),
+                None => {
+                    let device = Device::open(session, index)?;
+                    (Learned { device, controls: None }, None, false)
+                }
+            },
         };
-        let profile = self.shared.config.profile_for(device.name()).cloned();
-        let mut state = DeviceState::new(device, wireless_pid.or(known_pid), profile);
+        let profile = self.shared.config.profile_for(learned.device.name()).cloned();
+        let mut state = DeviceState::new(learned, wireless_pid.or(known_pid), profile);
         let applied = state.apply(session);
+        // What worked is kept for next time. What didn't, having come from an
+        // earlier connection, may be out of date, say after a firmware update,
+        // so it's forgotten and the retry learns everything afresh.
+        match &applied {
+            Ok(()) => self.remember(state.learned()),
+            Err(_) if from_memory => self.forget(),
+            Err(_) => {}
+        }
         self.devices.insert(index, state);
         applied
+    }
+
+    /// The key a directly connected device is remembered by. A receiver's
+    /// devices are remembered by its own worker, which outlives their visits.
+    fn memory_key(&self) -> Option<u16> {
+        self.endpoint
+            .receiver_kind()
+            .is_none()
+            .then_some(self.endpoint.product_id)
+    }
+
+    /// What was learned last time this device was connected, if it still holds:
+    /// one request checks its features haven't moved since.
+    fn remembered<L: Link>(&self, session: &mut Session<L>, index: u8) -> hidpp::Result<Option<Learned>> {
+        let Some(key) = self.memory_key() else {
+            return Ok(None);
+        };
+        let learned = self.shared.known.lock().ok().and_then(|known| known.get(&key).cloned());
+        let Some(mut learned) = learned else {
+            return Ok(None);
+        };
+        learned.device = learned.device.at(index);
+        if learned.device.still_matches(session)? {
+            return Ok(Some(learned));
+        }
+        log::info!(
+            "{}: its features have moved; learning them again",
+            learned.device.name()
+        );
+        self.forget();
+        Ok(None)
+    }
+
+    fn remember(&self, learned: Learned) {
+        if let Some(key) = self.memory_key()
+            && let Ok(mut known) = self.shared.known.lock()
+        {
+            known.insert(key, learned);
+        }
+    }
+
+    fn forget(&self) {
+        if let Some(key) = self.memory_key()
+            && let Ok(mut known) = self.shared.known.lock()
+        {
+            known.remove(&key);
+        }
     }
 
     fn retry_due<L: Link>(&mut self, session: &mut Session<L>) -> hidpp::Result<()> {
@@ -351,6 +432,8 @@ impl Worker<'_> {
 /// Everything known about one device, and the input it's in the middle of.
 struct DeviceState {
     device: Device,
+    /// Its buttons, once listed; see [`Learned`].
+    controls: Option<Vec<Control>>,
     wireless_pid: Option<u16>,
     profile: Option<Profile>,
     online: bool,
@@ -383,9 +466,17 @@ impl DeviceState {
         })
     }
 
-    fn new(device: Device, wireless_pid: Option<u16>, profile: Option<Profile>) -> Self {
+    fn learned(&self) -> Learned {
+        Learned {
+            device: self.device.clone(),
+            controls: self.controls.clone(),
+        }
+    }
+
+    fn new(learned: Learned, wireless_pid: Option<u16>, profile: Option<Profile>) -> Self {
         Self {
-            device,
+            device: learned.device,
+            controls: learned.controls,
             wireless_pid,
             profile,
             online: true,
@@ -417,6 +508,12 @@ impl DeviceState {
             log::info!("{name}: connected; no [[device]] in the config matches it");
             return Ok(());
         };
+        // Buttons first: they're what someone presses the moment a device comes
+        // back, and a press arriving while the rest is set up is kept for later.
+        match divert_buttons(session, device, &mut self.controls, &profile.buttons) {
+            Ok(diverted) => self.diverted = diverted,
+            Err(error) => setting(Err(error), name, "buttons")?,
+        }
         // Gesture counts are DPI, so the deadzone is scaled to what the pointer
         // is actually set to. Asking costs one request, and nothing at all on a
         // device whose resolution isn't adjustable.
@@ -441,10 +538,6 @@ impl DeviceState {
                 Ok(state) => self.thumb = state,
                 Err(error) => setting(Err(error), name, "the thumb wheel")?,
             }
-        }
-        match divert_buttons(session, device, &profile.buttons) {
-            Ok(diverted) => self.diverted = diverted,
-            Err(error) => setting(Err(error), name, "buttons")?,
         }
         log::debug!(
             "{name}: pointer at {} dpi, so a swipe travels {} counts by default",
@@ -700,15 +793,21 @@ fn default_thumb_step(info: ThumbInfo) -> u16 {
     (info.diverted_resolution / info.native_resolution.max(1)).max(1)
 }
 
+/// Diverts the profile's buttons, listing the device's controls first if
+/// `controls` doesn't hold them yet.
 fn divert_buttons<L: Link>(
     session: &mut Session<L>,
     device: &Device,
+    controls: &mut Option<Vec<Control>>,
     buttons: &BTreeMap<ButtonId, ButtonConfig>,
 ) -> hidpp::Result<Vec<Control>> {
     if buttons.is_empty() {
         return Ok(Vec::new());
     }
-    let controls = reprog::controls(session, device)?;
+    if controls.is_none() {
+        *controls = Some(reprog::controls(session, device)?);
+    }
+    let controls = controls.as_deref().unwrap_or_default();
     let mut diverted = Vec::new();
     for (id, binding) in buttons {
         let Some(control) = controls.iter().find(|control| control.cid == id.0) else {

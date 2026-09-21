@@ -34,7 +34,11 @@ pub fn run(config: Config) -> anyhow::Result<()> {
     service::clear_stop_request();
     let shutdown = Shutdown::new();
     let injector = Injector::spawn(config.desktop_switch_gap()).context("can't start keystroke output")?;
-    let shared = Arc::new(Shared { config, injector });
+    let shared = Arc::new(Shared {
+        config,
+        injector,
+        known: Mutex::default(),
+    });
     let mut api = HidApi::new().context("can't start HID access")?;
     let mut workers: HashMap<String, JoinHandle<Outcome>> = HashMap::new();
     // Endpoints left alone until they disappear, because nothing on them speaks HID++.
