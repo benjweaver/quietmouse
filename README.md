@@ -35,13 +35,28 @@ On macOS, or on Linux if you use Homebrew:
 brew install benjweaver/quietmouse/quietmouse
 ```
 
+On Windows (x64 or ARM64), in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/windows/install.ps1 | iex
+```
+
+That downloads the latest release, checks it against `SHA256SUMS`, puts it in
+`%LOCALAPPDATA%\Programs\quietmouse` and on your PATH, writes an example config if
+you don't have one, and starts quietmouse now and whenever you sign in. It needs no
+admin rights. Run it again to upgrade. To remove quietmouse, keeping your config:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/windows/install.ps1))) -Uninstall
+```
+
 Otherwise, download from the [Releases page](https://github.com/benjweaver/quietmouse/releases).
 Checksums are in `SHA256SUMS`.
 
-- **Windows** (x64 or ARM64): unzip `quietmouse.exe` and `quietmoused.exe` into a folder
-  you own, such as `%LOCALAPPDATA%\Programs\quietmouse`. No installer and no admin rights
-  (see [Running at login](#running-at-login)). The files aren't code-signed, so
-  SmartScreen may warn about an unrecognised app.
+- **Windows**: unzip `quietmouse.exe` and `quietmoused.exe` into a folder you own, such
+  as `%LOCALAPPDATA%\Programs\quietmouse`. No installer and no admin rights (see
+  [Running at login](#running-at-login)). The files aren't code-signed, so SmartScreen
+  may warn about an unrecognised app.
 - **macOS** (one universal binary for Apple Silicon and Intel): unpack into a folder you
   own, such as `~/.local/bin`, then run `xattr -d com.apple.quarantine quietmouse quietmoused`.
   The binaries aren't signed or notarised, so Gatekeeper blocks them otherwise.

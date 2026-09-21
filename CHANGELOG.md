@@ -5,6 +5,20 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Added
+
+- A one-line install for Windows:
+  `irm https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/windows/install.ps1 | iex`.
+  It fetches the latest release for x64 or ARM64, checks it against
+  `SHA256SUMS`, installs it in `%LOCALAPPDATA%\Programs\quietmouse` and on your
+  PATH, writes an example config if there isn't one, and starts quietmouse now
+  and at sign-in, all without admin rights. Running it again upgrades, stopping
+  the running copy first wherever it was installed, and `-Uninstall` removes it
+  while keeping your config. Until now Windows meant unzipping by hand and
+  running `autostart on` yourself.
+
 ## [0.1.11] - 2026-09-21
 
 ### Changed
