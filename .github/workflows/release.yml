@@ -70,8 +70,17 @@ jobs:
           sh scripts/third-party-notices.sh ${TARGETS//,/ } > "$dir/THIRD-PARTY-NOTICES.md"
           case "$NAME" in
             windows-*)
-              cp "target/$TARGETS/release/quietmouse.exe" "target/$TARGETS/release/quietmoused.exe" "$dir/"
-              7z a "out/$dir.zip" "$dir" > /dev/null
+              # The folder inside the zip keeps the same name in every release,
+              # so upgrading by extracting over the previous copy lands the new
+              # binaries where the old ones were. `autostart on` puts the full
+              # path to quietmoused.exe in the per-user Run key, and a folder
+              # named after the version moves it every time: no error, just no
+              # quietmouse at sign-in. The archive itself still carries the
+              # version in its own name.
+              inner=quietmouse
+              mv "$dir" "$inner"
+              cp "target/$TARGETS/release/quietmouse.exe" "target/$TARGETS/release/quietmoused.exe" "$inner/"
+              7z a "out/$dir.zip" "$inner" > /dev/null
               ;;
             macos-*)
               for bin in quietmouse quietmoused; do

@@ -181,13 +181,6 @@ pub fn open_log() -> anyhow::Result<File> {
 }
 
 /// The agent binary, installed next to this one.
-///
-/// Symlinks are resolved, so a package manager's shortcut (Homebrew's
-/// `bin/quietmoused`, which points into a versioned folder) becomes the real
-/// path. macOS ties its privacy permissions to the exact binary, and a shortcut
-/// that stays put across upgrades leaves a stale entry behind that silently
-/// matches nothing: no prompt, no permission, no clue why. A versioned path
-/// makes each upgrade a new entry that macOS asks about properly.
 fn agent_path() -> anyhow::Result<PathBuf> {
     let agent = std::env::current_exe()
         .context("can't find this executable")?
@@ -197,7 +190,33 @@ fn agent_path() -> anyhow::Result<PathBuf> {
         "{AGENT} should be next to this executable, at {}",
         agent.display()
     );
-    Ok(agent.canonicalize().unwrap_or(agent))
+    Ok(resolve(agent))
+}
+
+/// Resolves a package manager's shortcut (Homebrew's `bin/quietmoused`, which
+/// points into a versioned folder) to the real path.
+///
+/// macOS and Linux want the resolved path. macOS ties its privacy permissions to
+/// the exact binary, and a shortcut that stays put across upgrades leaves a stale
+/// entry behind that silently matches nothing: no prompt, no permission, no clue
+/// why. A versioned path makes each upgrade a new entry that macOS asks about
+/// properly.
+#[cfg(not(target_os = "windows"))]
+fn resolve(agent: PathBuf) -> PathBuf {
+    agent.canonicalize().unwrap_or(agent)
+}
+
+/// Windows wants the path exactly as it was reached.
+///
+/// Nothing here ties permissions to a binary, so there's nothing to gain, and
+/// two things to lose. Resolving turns a package manager's stable shortcut into
+/// whatever it points at today, and the Run key would then name a folder that
+/// the next upgrade replaces: no error, just no quietmouse at sign-in. It also
+/// returns an extended-length `\\?\C:\...` path, which not everything that
+/// reads the Run key copes with.
+#[cfg(target_os = "windows")]
+fn resolve(agent: PathBuf) -> PathBuf {
+    agent
 }
 
 /// Adds or removes the agent in the per-user Run key, which needs no admin rights.

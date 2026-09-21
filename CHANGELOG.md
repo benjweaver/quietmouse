@@ -5,6 +5,28 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Fixed
+
+- Starting at sign-in no longer breaks on Windows when quietmouse is upgraded.
+  `autostart on` records the full path to `quietmoused.exe` in the per-user Run
+  key, and that path was resolved through any symlink or junction first.
+  Resolving is there for macOS, which ties privacy permissions to the exact
+  binary; Windows ties nothing to a binary, so all it did there was turn a
+  stable shortcut into whatever it pointed at that day, leaving the Run key
+  naming a version that a later upgrade had removed. It also produced an
+  extended-length `\\?\C:\...` path, which not everything that reads the Run
+  key copes with. Windows now keeps the path as it was reached.
+
+### Changed
+
+- The folder inside the Windows zip is now always named `quietmouse`, rather
+  than after the release, so upgrading by extracting over the previous copy puts
+  the new binaries where the old ones were instead of beside them. A versioned
+  folder moved `quietmoused.exe` on every upgrade, with the same effect on the
+  Run key as above. The archive still carries the version in its own name.
+
 ## [0.1.10] - 2026-09-20
 
 ### Fixed
