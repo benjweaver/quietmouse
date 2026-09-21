@@ -87,8 +87,13 @@ main() {
             flag=
             if $uninstall; then flag=-Uninstall; fi
             if $update; then flag=-Update; fi
-            exec powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
-                "& ([scriptblock]::Create((irm $raw/windows/install.ps1))) $flag"
+            # Saved and run as a file. Starting PowerShell with a download on its
+            # command line is what droppers do, and Defender treats it that way.
+            work=$(mktemp -d)
+            trap 'rm -rf "$work"' EXIT
+            curl -fsSL -o "$work/install.ps1" "$raw/windows/install.ps1"
+            powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$work/install.ps1")" ${flag:+"$flag"}
+            return
             ;;
         Darwin)
             flavour=macos-universal

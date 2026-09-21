@@ -211,6 +211,11 @@ hands diverted buttons back to the device first. Quit Logi Options+ if it's inst
 If your organisation blocks unsigned programs, quietmouse won't try to get around
 that; ask IT.
 
+On Windows, gestures and button shortcuts do nothing while an elevated window has
+focus, such as Task Manager or a terminal run as administrator. Windows doesn't let
+an ordinary program send keystrokes to one, and quietmouse deliberately runs without
+admin rights. Click into another window and they work again.
+
 ## How it works
 
 ```

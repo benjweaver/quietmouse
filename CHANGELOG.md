@@ -31,6 +31,12 @@ from its section below.
   `brew upgrade` or your package manager rather than installing a second one.
 - One-line removal, `uninstall.ps1` and `uninstall.sh`, which undo everything
   the installers did except your config.
+- The Windows executables have an icon and version details, so Task Manager,
+  Explorer and a file's Properties show a quietmouse icon, its name, its version
+  and Ben Weaver as the company, instead of a blank program icon and nothing
+  else. The icon is a placeholder until there's a proper one. Task Manager's
+  Publisher column stays empty: it only shows that for packaged apps, which is
+  why it's also blank for Steam, Firefox and Windows' own security tray icon.
 
 ## [0.1.11] - 2026-09-21
 
