@@ -36,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: shellcheck --shell=sh scripts/*.sh packaging/install.sh
+      - run: shellcheck --shell=sh scripts/*.sh packaging/*.sh
       # Every release ships the notices, so a break here would be found at
       # release time otherwise.
       - name: The notices generate for every released target

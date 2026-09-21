@@ -14,17 +14,23 @@ from its section below.
   It fetches the latest release for x64 or ARM64, checks it against
   `SHA256SUMS`, installs it in `%LOCALAPPDATA%\Programs\quietmouse` and on your
   PATH, writes an example config if there isn't one, and starts quietmouse now
-  and at sign-in, all without admin rights. Running it again upgrades, stopping
-  the running copy first wherever it was installed, and `-Uninstall` removes it
-  while keeping your config. Until now Windows meant unzipping by hand and
-  running `autostart on` yourself.
+  and at sign-in, all without admin rights. Until now Windows meant unzipping by
+  hand and running `autostart on` yourself.
 - The same for macOS and Linux, for anyone not using Homebrew or a
   distribution package:
   `curl -fsSL https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/install.sh | sh`.
   It checks the release against `SHA256SUMS` too. On macOS it installs into
   `~/.local/bin` and runs `autostart on`; on Linux it runs the tarball's own
   `install.sh`, udev rule included. Run from Git Bash on Windows, it hands over
-  to the PowerShell installer. `sh -s -- --uninstall` removes it again.
+  to the PowerShell installer.
+- One-line updates, `update.ps1` and `update.sh` beside the installers.
+  quietmouse never goes online, so nothing else tells you a new release is out
+  or fetches it. Updating checks the installed version first and downloads
+  nothing when it's already the latest, stops the running copy before replacing
+  it, and leaves a copy from Homebrew or a Linux package alone, pointing you at
+  `brew upgrade` or your package manager rather than installing a second one.
+- One-line removal, `uninstall.ps1` and `uninstall.sh`, which undo everything
+  the installers did except your config.
 
 ## [0.1.11] - 2026-09-21
 

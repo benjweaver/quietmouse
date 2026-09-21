@@ -4,18 +4,19 @@
 #
 #   irm https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/windows/install.ps1 | iex
 #
-# To remove it again (your config is kept):
-#
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/windows/install.ps1))) -Uninstall
+# update.ps1 and uninstall.ps1 beside it run this with -Update or -Uninstall.
+# Updating does nothing but make sure quietmouse is running when the latest
+# release is already installed, and refuses when quietmouse isn't installed.
+# Uninstalling keeps your config.
 #
 # Written for Windows PowerShell 5.1, which every Windows 10 and 11 has.
 
-param([switch]$Uninstall)
+param([switch]$Uninstall, [switch]$Update)
 
 # Everything runs inside a script block so that `irm | iex` leaves nothing behind
 # in your session, and a failure throws rather than closing your terminal.
 & {
-    param([bool]$Uninstall)
+    param([bool]$Uninstall, [bool]$Update)
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue' # the progress bar slows downloads right down
     $repo = 'benjweaver/quietmouse'
@@ -39,6 +40,9 @@ param([switch]$Uninstall)
         Write-Host "quietmouse is removed. Your config in $env:LOCALAPPDATA\quietmouse is still there."
         return
     }
+    if ($Update -and -not (Test-Path $exe)) {
+        throw "quietmouse isn't installed in $dir. Install it with: irm https://raw.githubusercontent.com/$repo/main/packaging/windows/install.ps1 | iex"
+    }
 
     # PROCESSOR_ARCHITEW6432 is set when a 32-bit PowerShell runs on 64-bit Windows.
     $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
@@ -52,6 +56,17 @@ param([switch]$Uninstall)
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     $release = Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest" -UseBasicParsing
     $tag = $release.tag_name
+    if (Test-Path $exe) {
+        $current = (& $exe --version) -replace '^quietmouse\s+', ''
+        if ("v$current" -eq $tag) {
+            Write-Host "quietmouse $current is already the latest release."
+            # Still make sure it's registered and running, which is the one thing
+            # someone running this again may be hoping to fix.
+            & $exe autostart on
+            return
+        }
+        Write-Host "Updating quietmouse $current to $tag"
+    }
     $zipName = "quietmouse-$tag-$flavour.zip"
     $base = "https://github.com/$repo/releases/download/$tag"
 
@@ -104,4 +119,4 @@ param([switch]$Uninstall)
     & $exe autostart on
     Write-Host 'Quit Logi Options+ if it is running; it configures the same settings.'
     Write-Host 'Open a new terminal to run quietmouse from anywhere.'
-} $Uninstall.IsPresent
+} $Uninstall.IsPresent $Update.IsPresent

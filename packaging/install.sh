@@ -4,9 +4,10 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/install.sh | sh
 #
-# To remove it again (your config is kept):
-#
-#   curl -fsSL https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/install.sh | sh -s -- --uninstall
+# update.sh and uninstall.sh beside it run this with --update or --uninstall.
+# Updating does nothing but make sure quietmouse is running when the latest
+# release is already installed, and won't touch a copy that Homebrew or a
+# distribution package put there. Uninstalling keeps your config.
 #
 # On macOS the programs go in ~/.local/bin and start now and at log-in. On Linux
 # this runs the install.sh from the release tarball, which also installs the udev
@@ -71,10 +72,12 @@ install_macos() {
 # can't run half the script.
 main() {
     uninstall=false
+    update=false
     case "${1:-}" in
         --uninstall) uninstall=true ;;
+        --update) update=true ;;
         "") ;;
-        *) fail "usage: install.sh [--uninstall]" ;;
+        *) fail "usage: install.sh [--update | --uninstall]" ;;
     esac
 
     case "$(uname -s)" in
@@ -83,6 +86,7 @@ main() {
             # Windows installer rather than doing a second, worse job of it here.
             flag=
             if $uninstall; then flag=-Uninstall; fi
+            if $update; then flag=-Update; fi
             exec powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
                 "& ([scriptblock]::Create((irm $raw/windows/install.ps1))) $flag"
             ;;
@@ -102,9 +106,30 @@ main() {
         *) fail "quietmouse doesn't run on $(uname -s)" ;;
     esac
 
+    installed=$bin_dir/quietmouse
+    if $update && [ ! -x "$installed" ]; then
+        other=$(command -v quietmouse 2> /dev/null || true)
+        if [ -n "$other" ]; then
+            # Replacing it here would leave two copies fighting over log-in.
+            fail "quietmouse at $other wasn't installed by this script; update it the way you installed it (brew upgrade quietmouse, or your package manager)."
+        fi
+        fail "quietmouse isn't installed. Install it with: curl -fsSL $raw/install.sh | sh"
+    fi
+
     tag=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" |
         sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)
     [ -n "$tag" ] || fail "can't find the latest quietmouse release"
+    if ! $uninstall && [ -x "$installed" ]; then
+        current=$("$installed" --version 2> /dev/null | sed 's/^quietmouse *//')
+        if [ "v$current" = "$tag" ]; then
+            echo "quietmouse $current is already the latest release."
+            # Still make sure it's registered and running, which is the one thing
+            # someone running this again may be hoping to fix.
+            "$installed" autostart on
+            return
+        fi
+        echo "Updating quietmouse $current to $tag"
+    fi
     name=quietmouse-$tag-$flavour
     base=https://github.com/$repo/releases/download/$tag
 

@@ -44,11 +44,8 @@ irm https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/windo
 That downloads the latest release, checks it against `SHA256SUMS`, puts it in
 `%LOCALAPPDATA%\Programs\quietmouse` and on your PATH, writes an example config if
 you don't have one, and starts quietmouse now and whenever you sign in. It needs no
-admin rights. Run it again to upgrade. To remove quietmouse, keeping your config:
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/windows/install.ps1))) -Uninstall
-```
+admin rights, so it works on a managed work machine too, unless your organisation
+blocks unsigned programs.
 
 Without Homebrew on macOS or Linux, or from Git Bash on Windows:
 
@@ -59,8 +56,35 @@ curl -fsSL https://raw.githubusercontent.com/benjweaver/quietmouse/main/packagin
 It checks the download against `SHA256SUMS` the same way. On macOS it installs into
 `~/.local/bin` and starts quietmouse now and at log-in. On Linux (x86_64) it runs
 the `install.sh` from the release tarball, described below, which asks for sudo to
-install the udev rule. On Windows it runs the PowerShell installer above. Add
-`-s -- --uninstall` after `sh` to remove quietmouse, keeping your config.
+install the udev rule. On Windows it runs the PowerShell installer above.
+
+### Updating and removing
+
+quietmouse never goes online by itself, so it doesn't update itself either. To
+update a copy installed by either command above to the latest release:
+
+```powershell
+irm https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/windows/update.ps1 | iex
+```
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/update.sh | sh
+```
+
+If you already have the latest release, that only makes sure quietmouse is running.
+A copy from Homebrew or a Linux package updates the way it was installed:
+`brew upgrade quietmouse`, or your package manager. To remove quietmouse, keeping
+your config:
+
+```powershell
+irm https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/windows/uninstall.ps1 | iex
+```
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/uninstall.sh | sh
+```
+
+### Other ways to install
 
 Otherwise, download from the [Releases page](https://github.com/benjweaver/quietmouse/releases).
 Checksums are in `SHA256SUMS`.
