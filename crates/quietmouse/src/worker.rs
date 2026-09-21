@@ -14,8 +14,8 @@ use hidpp::features::{self, dpi, host};
 use hidpp::{Device, DeviceEvent, Error, Link, Report, Session, receiver};
 
 use crate::config::{
-    Action, ButtonConfig, ButtonId, Config, DEFAULT_GESTURE_STRAIGHTNESS, DEFAULT_GESTURE_THRESHOLD, Profile,
-    ScrollConfig, ShiftMode, SmartShiftConfig, ThumbWheelConfig,
+    Action, ButtonConfig, ButtonId, Config, DEFAULT_GESTURE_STRAIGHTNESS, Profile, ScrollConfig, ShiftMode,
+    SmartShiftConfig, ThumbWheelConfig, default_gesture_threshold,
 };
 use crate::connect::{self, Role};
 use crate::gesture::{self, Gesture, Ticker};
@@ -354,6 +354,9 @@ struct DeviceState {
     thumb: Option<ThumbState>,
     held: Vec<u16>,
     gesture: Option<(u16, Gesture)>,
+    /// What the pointer is set to, for scaling the gesture deadzone. `None`
+    /// while the device hasn't said, or won't.
+    dpi: Option<u16>,
 }
 
 struct ThumbState {
@@ -373,6 +376,7 @@ impl DeviceState {
             thumb: None,
             held: Vec::new(),
             gesture: None,
+            dpi: None,
         }
     }
 
@@ -396,9 +400,19 @@ impl DeviceState {
             log::info!("{name}: connected; no [[device]] in the config matches it");
             return Ok(());
         };
-        if let Some(value) = profile.dpi {
-            setting(apply_dpi(session, device, value), name, "DPI")?;
-        }
+        // Gesture counts are DPI, so the deadzone is scaled to what the pointer
+        // is actually set to. Asking costs one request, and nothing at all on a
+        // device whose resolution isn't adjustable.
+        self.dpi = match profile.dpi {
+            Some(value) => match apply_dpi(session, device, value) {
+                Ok(settled) => Some(settled),
+                Err(error) => {
+                    setting(Err(error), name, "DPI")?;
+                    None
+                }
+            },
+            None => dpi::read(session, device).ok().map(|current| current.current),
+        };
         if let Some(shift) = &profile.smartshift {
             setting(apply_smartshift(session, device, shift), name, "SmartShift")?;
         }
@@ -415,6 +429,11 @@ impl DeviceState {
             Ok(diverted) => self.diverted = diverted,
             Err(error) => setting(Err(error), name, "buttons")?,
         }
+        log::debug!(
+            "{name}: pointer at {} dpi, so a swipe travels {} counts by default",
+            self.dpi.map_or_else(|| "an unknown".to_owned(), |dpi| dpi.to_string()),
+            default_gesture_threshold(self.dpi)
+        );
         log::info!("{name}: settings applied (profile matching {:?})", profile.name_match);
         Ok(())
     }
@@ -441,12 +460,13 @@ impl DeviceState {
                         self.perform(session, &action, injector)?;
                     }
                 }
+                let dpi = self.dpi;
                 for cid in pressed {
                     let Some(binding) = self.binding(cid) else {
                         continue;
                     };
                     if binding.is_gesture() {
-                        let threshold = binding.threshold.unwrap_or(DEFAULT_GESTURE_THRESHOLD);
+                        let threshold = binding.threshold.unwrap_or_else(|| default_gesture_threshold(dpi));
                         let straightness = binding.straightness.unwrap_or(DEFAULT_GESTURE_STRAIGHTNESS);
                         self.gesture = Some((cid, Gesture::new(threshold, straightness)));
                     } else if let Some(action) = binding.press.clone() {
@@ -490,9 +510,13 @@ impl DeviceState {
         Ok(())
     }
 
-    fn perform<L: Link>(&self, session: &mut Session<L>, action: &Action, injector: &Injector) -> hidpp::Result<()> {
-        let device = &self.device;
-        log::debug!("{}: {action:?}", device.name());
+    fn perform<L: Link>(
+        &mut self,
+        session: &mut Session<L>,
+        action: &Action,
+        injector: &Injector,
+    ) -> hidpp::Result<()> {
+        log::debug!("{}: {action:?}", self.device.name());
         let send = |output: Output| -> hidpp::Result<()> {
             injector.send(output);
             Ok(())
@@ -511,12 +535,24 @@ impl DeviceState {
                 Ok(())
             }
             Action::Ignore => Ok(()),
-            Action::Dpi(value) => apply_dpi(session, device, *value),
-            Action::CycleDpi(values) => cycle_dpi(session, device, values),
-            Action::ToggleSmartshift => toggle_smartshift(session, device),
-            Action::Host(channel) => host::switch(session, device, channel.saturating_sub(1)),
+            Action::Dpi(value) => self.change_dpi(session, *value),
+            Action::CycleDpi(values) => match next_dpi(session, &self.device, values) {
+                Ok(next) => self.change_dpi(session, next),
+                Err(error) => Err(error),
+            },
+            Action::ToggleSmartshift => toggle_smartshift(session, &self.device),
+            Action::Host(channel) => host::switch(session, &self.device, channel.saturating_sub(1)),
         };
-        setting(result, device.name(), "action")
+        setting(result, self.device.name(), "action")
+    }
+
+    /// Sets the pointer resolution and remembers what the device settled on, so
+    /// a button that changes DPI takes the gesture deadzone with it rather than
+    /// leaving it measuring a different distance than it did a moment ago.
+    fn change_dpi<L: Link>(&mut self, session: &mut Session<L>, wanted: u16) -> hidpp::Result<()> {
+        let settled = apply_dpi(session, &self.device, wanted)?;
+        self.dpi = Some(settled);
+        Ok(())
     }
 }
 
@@ -544,7 +580,9 @@ fn setting(result: hidpp::Result<()>, device: &str, what: &str) -> hidpp::Result
     }
 }
 
-fn apply_dpi<L: Link>(session: &mut Session<L>, device: &Device, wanted: u16) -> hidpp::Result<()> {
+/// Sets the pointer resolution, returning what the device settled on, which is
+/// the nearest it supports when it can't give exactly what was asked for.
+fn apply_dpi<L: Link>(session: &mut Session<L>, device: &Device, wanted: u16) -> hidpp::Result<u16> {
     let current = dpi::read(session, device)?;
     let target = current.choices.nearest(wanted).unwrap_or(wanted);
     if target != wanted {
@@ -553,17 +591,19 @@ fn apply_dpi<L: Link>(session: &mut Session<L>, device: &Device, wanted: u16) ->
     if current.current != target {
         dpi::set(session, device, target)?;
     }
-    Ok(())
+    Ok(target)
 }
 
-fn cycle_dpi<L: Link>(session: &mut Session<L>, device: &Device, values: &[u16]) -> hidpp::Result<()> {
+/// The resolution after the current one in `values`, starting over at the end.
+/// The config guarantees `values` isn't empty.
+fn next_dpi<L: Link>(session: &mut Session<L>, device: &Device, values: &[u16]) -> hidpp::Result<u16> {
     let current = dpi::read(session, device)?.current;
     let next = values
         .iter()
         .position(|&value| value == current)
         .map_or(0, |i| (i + 1) % values.len());
     log::info!("{}: DPI {}", device.name(), values[next]);
-    apply_dpi(session, device, values[next])
+    Ok(values[next])
 }
 
 fn apply_smartshift<L: Link>(

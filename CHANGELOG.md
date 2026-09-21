@@ -7,6 +7,18 @@ from its section below.
 
 ## [Unreleased]
 
+### Changed
+
+- The gesture deadzone now follows the device's pointer resolution instead of
+  being a fixed number of sensor counts. Counts are DPI, so one number meant a
+  different distance on every device and moved under you when the resolution
+  did: the default 150 is about 4mm at 1000 dpi but 2.4mm at 1600, which is the
+  difference between a deliberate flick and a twitch. Left unset, `threshold` is
+  now scaled to whatever the pointer is set to, including by a button that
+  changes DPI mid-session, so the flick stays the same length. Setting
+  `threshold` yourself still means sensor counts exactly as written, and a device
+  that won't report its resolution keeps the unscaled default.
+
 ### Fixed
 
 - Starting at sign-in no longer breaks on Windows when quietmouse is upgraded.

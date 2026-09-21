@@ -12,14 +12,16 @@ use serde::Deserialize;
 use crate::gesture::Direction;
 use crate::keys::{Chord, MediaKey, MouseButton};
 
-/// Movement, in sensor counts, before a held gesture button counts as a swipe.
-/// Counts are DPI, so at 1000 DPI this is roughly 4mm: far enough that nudging
-/// the mouse as you press the button can't reach it, short enough that a real
-/// flick fires well before you've finished making it.
+/// Movement before a held gesture button counts as a swipe, in sensor counts at
+/// [`GESTURE_THRESHOLD_DPI`]: roughly 4mm. Far enough that nudging the mouse as
+/// you press the button can't reach it, short enough that a real flick fires
+/// well before you've finished making it.
 /// [`DEFAULT_GESTURE_STRAIGHTNESS`] then keeps a near-diagonal flick from
 /// picking the wrong direction, and [`crate::gesture::DRIFT_RESET`] keeps a
 /// held button from wandering into one.
 pub const DEFAULT_GESTURE_THRESHOLD: u16 = 150;
+/// The resolution [`DEFAULT_GESTURE_THRESHOLD`] is quoted at.
+pub const GESTURE_THRESHOLD_DPI: u16 = 1000;
 /// Default gap between desktop switches: long enough for the switch to land,
 /// short enough that back-to-back swipes don't feel held up.
 pub const DEFAULT_DESKTOP_SWITCH_GAP_MS: u16 = 100;
@@ -29,6 +31,24 @@ pub const DEFAULT_DESKTOP_SWITCH_GAP_MS: u16 = 100;
 pub const DEFAULT_GESTURE_STRAIGHTNESS: f32 = 1.5;
 /// Highest Easy-Switch channel a device can have.
 const MAX_HOST: u8 = 6;
+
+/// How far to move, in sensor counts, before a swipe counts on a device running
+/// at `dpi`.
+///
+/// Counts are DPI, so one fixed number is a different distance on every device,
+/// and moves under you when the DPI does: [`DEFAULT_GESTURE_THRESHOLD`] is about
+/// 4mm at 1000 dpi but 2.4mm at 1600, which is the difference between a
+/// deliberate flick and a twitch. Scaling keeps the gesture the same length
+/// whatever the pointer is set to. A device that won't say what its resolution
+/// is keeps the unscaled default; an explicit `threshold` is always taken as
+/// counts and left alone.
+pub fn default_gesture_threshold(dpi: Option<u16>) -> u16 {
+    let Some(dpi) = dpi.filter(|&dpi| dpi > 0) else {
+        return DEFAULT_GESTURE_THRESHOLD;
+    };
+    let scaled = u32::from(DEFAULT_GESTURE_THRESHOLD) * u32::from(dpi) / u32::from(GESTURE_THRESHOLD_DPI);
+    u16::try_from(scaled).unwrap_or(u16::MAX).max(1)
+}
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -371,9 +391,11 @@ up = "overview"
 down = "app_windows"
 left = "desktop_left"        # swipe left to go to the desktop on the left
 right = "desktop_right"
-# threshold = 150            # how far to move before a swipe counts, in DPI counts,
-                             # so about 4mm at 1000 dpi; raise it if swipes fire
-                             # when you meant to tap
+# threshold = 150            # how far to move before a swipe counts, in sensor
+                             # counts at 1000 dpi: about 4mm. Left out, it follows
+                             # this device's resolution, so the flick stays the
+                             # same length whatever `dpi` above is set to. Set it
+                             # and it's taken as counts exactly as written.
 # straightness = 1.5         # how much further one way than the other it must be;
                              # 1.0 takes whichever way moved more
 
@@ -433,6 +455,28 @@ mod tests {
             documented("# straightness = "),
             DEFAULT_GESTURE_STRAIGHTNESS.to_string()
         );
+    }
+
+    #[test]
+    fn the_default_threshold_is_the_same_distance_at_any_resolution() {
+        // The resolution it's quoted at comes back unchanged.
+        assert_eq!(
+            default_gesture_threshold(Some(GESTURE_THRESHOLD_DPI)),
+            DEFAULT_GESTURE_THRESHOLD
+        );
+        // Twice the resolution needs twice the counts for the same distance.
+        assert_eq!(
+            default_gesture_threshold(Some(GESTURE_THRESHOLD_DPI * 2)),
+            DEFAULT_GESTURE_THRESHOLD * 2
+        );
+        assert_eq!(default_gesture_threshold(Some(1600)), 240);
+        assert_eq!(default_gesture_threshold(Some(400)), 60);
+        // A device that won't say, or says something nonsensical, keeps the default.
+        assert_eq!(default_gesture_threshold(None), DEFAULT_GESTURE_THRESHOLD);
+        assert_eq!(default_gesture_threshold(Some(0)), DEFAULT_GESTURE_THRESHOLD);
+        // Nothing rounds down to a threshold no movement could ever cross.
+        assert!(default_gesture_threshold(Some(1)) >= 1);
+        assert_eq!(default_gesture_threshold(Some(u16::MAX)), 9830);
     }
 
     #[test]

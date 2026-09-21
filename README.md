@@ -107,8 +107,9 @@ thumbwheel = { left = { media = "volume_down" }, right = { media = "volume_up" }
 tap = "overview"                     # Mission Control / Task View / Activities
 left = "desktop_left"                # the Space / virtual desktop / workspace on the left
 right = "desktop_right"
-threshold = 150                      # how far to move before a swipe counts, in DPI
-                                     # counts, so about 4mm at 1000 dpi
+threshold = 150                      # how far to move before a swipe counts, in sensor
+                                     # counts at 1000 dpi (about 4mm). Leave it out to
+                                     # follow the device's own resolution.
 straightness = 1.5                   # how much further one way than the other it must be
 
 [device.buttons.mode_shift]
@@ -180,6 +181,13 @@ Button remapping uses the device's own *diversion*: the device reports a diverte
 control to software instead of acting on it, and for gestures it also reports pointer
 movement while the button is held. Diversion is volatile, so quietmouse re-applies it
 whenever a receiver says a device came online, or a device reports that it reconnected.
+
+Movement arrives in sensor counts, which are DPI, so the same `threshold` is a
+different distance on every device and moves under you when the resolution does:
+150 counts is about 4mm at 1000 dpi but 2.4mm at 1600. Left unset, the deadzone
+follows whatever the pointer is actually set to, including a button that changes
+it, so the flick stays the same length. Set `threshold` yourself and it's taken
+as counts exactly as written.
 
 A swipe is one unbroken movement past `threshold`, and it fires the moment it gets
 there rather than on release, so the action lands while you're still moving. Two
