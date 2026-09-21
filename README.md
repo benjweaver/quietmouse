@@ -50,6 +50,18 @@ admin rights. Run it again to upgrade. To remove quietmouse, keeping your config
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/windows/install.ps1))) -Uninstall
 ```
 
+Without Homebrew on macOS or Linux, or from Git Bash on Windows:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/install.sh | sh
+```
+
+It checks the download against `SHA256SUMS` the same way. On macOS it installs into
+`~/.local/bin` and starts quietmouse now and at log-in. On Linux (x86_64) it runs
+the `install.sh` from the release tarball, described below, which asks for sudo to
+install the udev rule. On Windows it runs the PowerShell installer above. Add
+`-s -- --uninstall` after `sh` to remove quietmouse, keeping your config.
+
 Otherwise, download from the [Releases page](https://github.com/benjweaver/quietmouse/releases).
 Checksums are in `SHA256SUMS`.
 

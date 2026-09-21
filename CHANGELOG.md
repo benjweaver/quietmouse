@@ -18,6 +18,13 @@ from its section below.
   the running copy first wherever it was installed, and `-Uninstall` removes it
   while keeping your config. Until now Windows meant unzipping by hand and
   running `autostart on` yourself.
+- The same for macOS and Linux, for anyone not using Homebrew or a
+  distribution package:
+  `curl -fsSL https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/install.sh | sh`.
+  It checks the release against `SHA256SUMS` too. On macOS it installs into
+  `~/.local/bin` and runs `autostart on`; on Linux it runs the tarball's own
+  `install.sh`, udev rule included. Run from Git Bash on Windows, it hands over
+  to the PowerShell installer. `sh -s -- --uninstall` removes it again.
 
 ## [0.1.11] - 2026-09-21
 
