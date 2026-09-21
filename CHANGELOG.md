@@ -5,7 +5,7 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
-## [Unreleased]
+## [0.1.11] - 2026-09-21
 
 ### Changed
 
@@ -18,6 +18,12 @@ from its section below.
   changes DPI mid-session, so the flick stays the same length. Setting
   `threshold` yourself still means sensor counts exactly as written, and a device
   that won't report its resolution keeps the unscaled default.
+- The folder inside the Windows zip is now always named `quietmouse`, rather
+  than after the release, so upgrading by extracting over the previous copy puts
+  the new binaries where the old ones were instead of beside them. A versioned
+  folder moved `quietmoused.exe` on every upgrade, with the same effect on the
+  Run key as the fix below. The archive still carries the version in its own
+  name.
 
 ### Fixed
 
@@ -31,7 +37,6 @@ from its section below.
   directories are `~/Library/Application Support` there; Linux keeps its own
   split, since XDG puts configuration in `~/.config` and people expect to find
   it there.
-
 - Starting at sign-in no longer breaks on Windows when quietmouse is upgraded.
   `autostart on` records the full path to `quietmoused.exe` in the per-user Run
   key, and that path was resolved through any symlink or junction first.
@@ -41,14 +46,6 @@ from its section below.
   naming a version that a later upgrade had removed. It also produced an
   extended-length `\\?\C:\...` path, which not everything that reads the Run
   key copes with. Windows now keeps the path as it was reached.
-
-### Changed
-
-- The folder inside the Windows zip is now always named `quietmouse`, rather
-  than after the release, so upgrading by extracting over the previous copy puts
-  the new binaries where the old ones were instead of beside them. A versioned
-  folder moved `quietmoused.exe` on every upgrade, with the same effect on the
-  Run key as above. The archive still carries the version in its own name.
 
 ## [0.1.10] - 2026-09-20
 
@@ -245,7 +242,8 @@ First release.
   key.
 - No network access, enforced in CI.
 
-[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.10...HEAD
+[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.11...HEAD
+[0.1.11]: https://github.com/benjweaver/quietmouse/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/benjweaver/quietmouse/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/benjweaver/quietmouse/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/benjweaver/quietmouse/compare/v0.1.7...v0.1.8
