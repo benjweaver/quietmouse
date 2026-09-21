@@ -23,6 +23,23 @@ param([switch]$Uninstall, [switch]$Update)
     $dir = Join-Path $env:LOCALAPPDATA 'Programs\quietmouse'
     $exe = Join-Path $dir 'quietmouse.exe'
 
+    # `autostart on` switches quietmouse back on if it was switched off in Task
+    # Manager or Settings, which is right when you ask for it but not when all
+    # you asked for was an update. So when it's switched off, the Run entry is
+    # just pointed at this copy and quietmouse started, leaving the switch alone.
+    function Register-Autostart {
+        $approved = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'
+        $switch = (Get-ItemProperty $approved -Name quietmouse -ErrorAction SilentlyContinue).quietmouse
+        if (-not ($switch -and ($switch[0] -band 1))) {
+            & $exe autostart on
+            return
+        }
+        $agent = Join-Path $dir 'quietmoused.exe'
+        Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name quietmouse -Value "`"$agent`""
+        if (-not (Get-Process quietmoused -ErrorAction SilentlyContinue)) { & $exe start }
+        Write-Host 'quietmouse is switched off at sign-in in Task Manager or Settings, so it stays that way. `quietmouse autostart on` switches it back on.'
+    }
+
     function Set-UserPath([bool]$present) {
         $entries = @([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' |
                 Where-Object { $_ -and $_.TrimEnd('\') -ne $dir })
@@ -62,7 +79,7 @@ param([switch]$Uninstall, [switch]$Update)
             Write-Host "quietmouse $current is already the latest release."
             # Still make sure it's registered and running, which is the one thing
             # someone running this again may be hoping to fix.
-            & $exe autostart on
+            Register-Autostart
             return
         }
         Write-Host "Updating quietmouse $current to $tag"
@@ -116,7 +133,7 @@ param([switch]$Uninstall, [switch]$Update)
         & $exe config --init
         Write-Host "Edit $config to change settings."
     }
-    & $exe autostart on
+    Register-Autostart
     Write-Host 'Quit Logi Options+ if it is running; it configures the same settings.'
     Write-Host 'Open a new terminal to run quietmouse from anywhere.'
 } $Uninstall.IsPresent $Update.IsPresent

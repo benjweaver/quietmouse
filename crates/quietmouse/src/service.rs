@@ -229,10 +229,17 @@ pub fn autostart(enable: bool) -> anyhow::Result<()> {
     let key = windows_registry::CURRENT_USER
         .create(RUN_KEY)
         .context("can't open the per-user Run key")?;
+    let switched_off = startup_switched_off(RUN_VALUE);
     if enable {
         let agent = agent_path()?;
         key.set_string(RUN_VALUE, format!("\"{}\"", agent.display()))
             .context("can't add quietmouse to the Run key")?;
+        // Asking for it on means on: an entry still switched off would sit in
+        // the Run key doing nothing while this said it would start.
+        if switched_off == Some(true) {
+            clear_startup_approval(RUN_VALUE)?;
+            println!("quietmouse had been switched off in Task Manager or Settings; it's switched back on");
+        }
         println!("quietmouse will start whenever you sign in ({})", agent.display());
         if !held(&Paths::user()?.lock())? {
             start()?;
@@ -242,9 +249,39 @@ pub fn autostart(enable: bool) -> anyhow::Result<()> {
             key.remove_value(RUN_VALUE)
                 .context("can't remove quietmouse from the Run key")?;
         }
+        // Left behind, the switch would apply to a later install.
+        if switched_off.is_some() {
+            clear_startup_approval(RUN_VALUE)?;
+        }
         println!("quietmouse won't start when you sign in");
     }
     Ok(())
+}
+
+/// Where Task Manager's Startup apps and Settings → Apps → Startup record the
+/// on/off switch for each Run entry. Switching an entry off there leaves the
+/// Run key alone and marks it here instead.
+#[cfg(target_os = "windows")]
+const STARTUP_APPROVED_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+
+/// Whether the Run entry `name` has been switched off, or `None` if Windows
+/// holds no switch for it. The first byte of the record is odd when it's off.
+#[cfg(target_os = "windows")]
+fn startup_switched_off(name: &str) -> Option<bool> {
+    let record = windows_registry::CURRENT_USER
+        .open(STARTUP_APPROVED_KEY)
+        .and_then(|key| key.get_bytes(name))
+        .ok()?;
+    Some(record.first().is_some_and(|flags| flags & 1 == 1))
+}
+
+/// Forgets the switch for `name`, which Windows reads as switched on.
+#[cfg(target_os = "windows")]
+fn clear_startup_approval(name: &str) -> anyhow::Result<()> {
+    windows_registry::CURRENT_USER
+        .create(STARTUP_APPROVED_KEY)
+        .and_then(|key| key.remove_value(name))
+        .context("can't reset quietmouse's startup switch")
 }
 
 /// Label of the per-user LaunchAgent.

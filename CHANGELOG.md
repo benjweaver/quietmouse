@@ -20,6 +20,15 @@ from its section below.
   second worked. The first report of each press is now set aside; a real swipe
   is a stream of reports, so it loses nothing. This comes from the mouse, not
   the operating system, so it applies on macOS and Linux as well.
+- `quietmouse autostart on` no longer claims quietmouse will start at sign-in
+  on Windows while it's switched off in Task Manager's Startup apps or in
+  Settings → Apps → Startup. Switching it off there leaves the Run entry in
+  place and records the choice elsewhere, which `autostart on` never looked
+  at. It now switches the entry back on and says so, and `autostart off`
+  clears that record as well, so it can't carry over to a later install.
+  Updating through `update.ps1` or the installer leaves a switched-off entry
+  off, since updating isn't asking for it back on, and still starts the new
+  version straight away.
 
 ## [0.1.12] - 2026-09-21
 
