@@ -16,8 +16,14 @@ use crate::inject::Injector;
 use crate::worker::{self, Outcome, Shared};
 use crate::{permissions, service};
 
-/// How often to look for newly attached receivers and devices, and for stop requests.
-const SCAN_INTERVAL: Duration = Duration::from_secs(2);
+/// How often to look for newly attached receivers and devices, and for stop
+/// requests. A mouse switched back from another computer comes back as a new
+/// device, and its buttons do nothing special until the next look finds it, so
+/// this is most of the wait after switching. Only Logitech's devices are listed,
+/// which took about a millisecond on Windows against 25 to 90 for every HID
+/// device, since Windows opens each one to read it; looking this often costs
+/// next to nothing.
+const SCAN_INTERVAL: Duration = Duration::from_millis(500);
 /// How often to repeat a complaint about a device that won't open, usually
 /// because macOS hasn't been given Input Monitoring yet. Opening is retried on
 /// every scan, so granting it takes effect without restarting quietmouse.
@@ -50,7 +56,14 @@ pub fn run(config: Config) -> anyhow::Result<()> {
 
     loop {
         reap(&mut workers, &mut skipped);
-        if let Err(error) = api.refresh_devices() {
+        // Only Logitech's devices are listed. HID++ over USB already needs that
+        // check, since other vendors use the same page; over Bluetooth the page
+        // is Logitech's own, and its devices report Logitech's vendor ID there
+        // too (an MX Master 3S does on Windows).
+        let scanned = api
+            .reset_devices()
+            .and_then(|()| api.add_devices(hidpp::LOGITECH_VID, 0));
+        if let Err(error) = scanned {
             log::warn!("device scan failed: {error}");
         }
         let endpoints = hid::discover(&api);

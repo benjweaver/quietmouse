@@ -21,7 +21,7 @@ const AGENT: &str = "quietmoused";
 /// Past this size the agent's log is kept as `quietmouse.old.log` and a new one started.
 const LOG_LIMIT: u64 = 1024 * 1024;
 /// How long `quietmouse stop` waits. The daemon notices a stop request within one
-/// device scan (two seconds), then hands buttons back to the devices.
+/// device scan (half a second), then hands buttons back to the devices.
 const STOP_WAIT: Duration = Duration::from_secs(10);
 const STOP_POLL: Duration = Duration::from_millis(200);
 
@@ -157,7 +157,11 @@ pub fn start() -> anyhow::Result<()> {
     );
     Config::load(&config)?;
     let agent = agent_path()?;
-    // The agent outlives this command; nothing here waits for it.
+    // The agent outlives this command; nothing here waits for it. On Windows it
+    // still inherits every inheritable handle this process holds, including a
+    // pipe its output may be going to, so a caller reading that pipe waits for
+    // the agent to exit. `inherit_handles(false)` fixes that without `unsafe`
+    // once it's stable (rust-lang/rust#146407).
     Command::new(&agent)
         .stdin(Stdio::null())
         .stdout(Stdio::null())

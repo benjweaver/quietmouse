@@ -5,6 +5,18 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Changed
+
+- The buttons come back much sooner after switching the mouse back from
+  another computer. A Bluetooth mouse returns as a new device, and quietmouse
+  only noticed on its next look, every two seconds, so for up to two seconds
+  the gesture button did nothing. It now looks every half second, and only at
+  Logitech's devices, which is what makes that affordable: listing them took
+  about a millisecond on Windows, where listing every HID device took 25 to
+  90, because Windows opens each one to read it.
+
 ## [0.1.13] - 2026-09-21
 
 ### Fixed

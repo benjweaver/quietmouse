@@ -272,11 +272,11 @@ integers, with no pointers and nothing to free.
 
 Early. Works today: the protocol layer, config, gestures and the CLI, all
 unit-tested, with CI on macOS, Linux and Windows. Tested on hardware so far: an
-MX Master 3S over Bluetooth on macOS. That covers reading settings, remapped buttons,
-tap and swipe gestures, and handing the buttons back on exit. Receivers, and running
-on Linux and Windows, still need testing on real devices. Planned: per-application profiles,
-a tray/menu-bar settings app, and native hotplug notifications instead of a two-second
-rescan.
+MX Master 3S over Bluetooth on macOS and Windows. That covers reading settings,
+remapped buttons, tap and swipe gestures, switching devices, and handing the buttons
+back on exit. Receivers, and running on Linux, still need testing on real devices.
+Planned: per-application profiles, a tray/menu-bar settings app, and native hotplug
+notifications instead of rescanning every half second.
 
 ## Credits
 
