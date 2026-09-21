@@ -5,6 +5,22 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Fixed
+
+- A tap of the gesture button straight after moving the mouse no longer fires
+  as a swipe. When the button goes down, the mouse hands over the movement its
+  sensor gathered just before the press in the first report of that press. On
+  an MX Master 3S that was 100 to 750 counts after moving over to click a
+  window, against one or two per report while the button is held, which crossed
+  the swipe threshold at once and swiped back the way the hand had come. With
+  a single desktop, the misfired switch did nothing visible, so it looked like
+  the first press after switching windows was simply ignored and only the
+  second worked. The first report of each press is now set aside; a real swipe
+  is a stream of reports, so it loses nothing. This comes from the mouse, not
+  the operating system, so it applies on macOS and Linux as well.
+
 ## [0.1.12] - 2026-09-21
 
 ### Added
