@@ -235,6 +235,10 @@ impl Worker<'_> {
         };
         match state.device.parse_event(report) {
             Some(DeviceEvent::Reconnected) => {
+                if state.still_configured(session) {
+                    log::info!("{}: reconnected, with its settings still in place", state.device.name());
+                    return Ok(());
+                }
                 log::info!("{}: reconnected; applying settings again", state.device.name());
                 self.connect(session, index, None)
             }
@@ -366,6 +370,19 @@ struct ThumbState {
 }
 
 impl DeviceState {
+    /// Whether the device still holds what was set up on it, judged by its first
+    /// diverted control. A mouse announces each reconnection, having dropped its
+    /// diversions when the link came back; found and set up on that same link
+    /// before the announcement arrives, as a Bluetooth mouse switched back from
+    /// another computer usually is, it has lost nothing, and setting it all up
+    /// again would only repeat the work. With nothing diverted there's nothing
+    /// to ask, so that counts as lost.
+    fn still_configured<L: Link>(&self, session: &mut Session<L>) -> bool {
+        self.diverted.first().is_some_and(|control| {
+            reprog::reporting(session, &self.device, control.cid).is_ok_and(|reporting| reporting.diverted)
+        })
+    }
+
     fn new(device: Device, wireless_pid: Option<u16>, profile: Option<Profile>) -> Self {
         Self {
             device,

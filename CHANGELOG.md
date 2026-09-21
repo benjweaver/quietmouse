@@ -5,6 +5,19 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Changed
+
+- A mouse switched back from another computer is set up once instead of
+  twice. The mouse announces every reconnection, and quietmouse set it up again
+  on hearing that; since 0.1.14 finds a returning mouse sooner, it often
+  already had, and the announcement arrived afterwards. It now asks the mouse
+  whether a diverted button is still diverted and only sets it up again if
+  not. Tested by skipping the repeat outright across five switches: the first
+  setup held every time, because the mouse drops its settings when its link
+  comes back, before anything can reach it.
+
 ## [0.1.14] - 2026-09-21
 
 ### Changed
