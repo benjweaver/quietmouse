@@ -21,6 +21,17 @@ from its section below.
 
 ### Fixed
 
+- The config no longer sits in a different directory from everything else on
+  Windows. `dirs::config_dir` is the roaming profile there, so the config lived
+  in `%APPDATA%\quietmouse` while the log and the lock were in
+  `%LOCALAPPDATA%\quietmouse`, a directory the documentation also pointed at for
+  everything else. Editing the file you'd reasonably expect to be the config
+  changed nothing, silently, and the daemon carried on reading a file you hadn't
+  touched. It now sits beside the log. macOS never showed this because both
+  directories are `~/Library/Application Support` there; Linux keeps its own
+  split, since XDG puts configuration in `~/.config` and people expect to find
+  it there.
+
 - Starting at sign-in no longer breaks on Windows when quietmouse is upgraded.
   `autostart on` records the full path to `quietmoused.exe` in the per-user Run
   key, and that path was resolved through any symlink or junction first.

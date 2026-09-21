@@ -91,9 +91,9 @@ every HID++ report.
 ## Config
 
 `quietmouse config` prints the path: `~/Library/Application Support/quietmouse/config.toml`
-on macOS, `~/.config/quietmouse/config.toml` on Linux, `%APPDATA%\quietmouse\config.toml`
-on Windows. `config --init` writes a commented example with your platform's
-shortcuts. A short version:
+on macOS, `~/.config/quietmouse/config.toml` on Linux,
+`%LOCALAPPDATA%\quietmouse\config.toml` on Windows, beside the log. `config --init`
+writes a commented example with your platform's shortcuts. A short version:
 
 ```toml
 [[device]]

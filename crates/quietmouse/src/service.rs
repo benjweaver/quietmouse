@@ -27,6 +27,8 @@ const STOP_POLL: Duration = Duration::from_millis(200);
 
 /// Per-user files: `%LOCALAPPDATA%\quietmouse` on Windows,
 /// `~/Library/Application Support/quietmouse` on macOS, `~/.local/share/quietmouse` on Linux.
+/// [`Config::default_path`] puts the config here too, except on Linux, where XDG
+/// keeps configuration in `~/.config` and only data lands here.
 struct Paths {
     dir: PathBuf,
 }

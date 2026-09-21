@@ -23,7 +23,10 @@ pub const DEFAULT_GESTURE_THRESHOLD: u16 = 150;
 /// The resolution [`DEFAULT_GESTURE_THRESHOLD`] is quoted at.
 pub const GESTURE_THRESHOLD_DPI: u16 = 1000;
 /// Default gap between desktop switches: long enough for the switch to land,
-/// short enough that back-to-back swipes don't feel held up.
+/// short enough that back-to-back swipes don't feel held up. Sending eight
+/// switches in a row on Windows 11, all eight arrive 100ms apart, 50ms loses
+/// one and no gap at all loses three. Pressing the button again by hand takes
+/// longer than this, so the gap normally costs nothing and only catches bursts.
 pub const DEFAULT_DESKTOP_SWITCH_GAP_MS: u16 = 100;
 /// How much further along one axis than the other a swipe must be by default.
 /// Half again as far: enough that a near-diagonal flick does nothing rather than
@@ -287,8 +290,18 @@ impl<'de> Deserialize<'de> for ButtonId {
 }
 
 impl Config {
+    /// Where the config lives when none is named: beside the log, in
+    /// `%LOCALAPPDATA%\quietmouse` on Windows and
+    /// `~/Library/Application Support/quietmouse` on macOS. Linux is the
+    /// exception, because XDG keeps configuration in `~/.config` and data in
+    /// `~/.local/share`, and people there expect that.
     pub fn default_path() -> Option<PathBuf> {
-        dirs::config_dir().map(|dir| dir.join("quietmouse").join("config.toml"))
+        let dir = if cfg!(target_os = "linux") {
+            dirs::config_dir()
+        } else {
+            dirs::data_local_dir()
+        };
+        dir.map(|dir| dir.join("quietmouse").join("config.toml"))
     }
 
     /// `explicit`, or the platform's default location.
@@ -454,6 +467,29 @@ mod tests {
         assert_eq!(
             documented("# straightness = "),
             DEFAULT_GESTURE_STRAIGHTNESS.to_string()
+        );
+    }
+
+    #[test]
+    fn the_config_sits_beside_the_log_except_on_linux() {
+        let path = Config::default_path().expect("this system has somewhere to keep a config");
+        assert!(path.ends_with("quietmouse/config.toml"), "{}", path.display());
+        let dir = path.parent().expect("a config file has a directory");
+        let expected = if cfg!(target_os = "linux") {
+            // XDG separates configuration from data, and Linux expects that.
+            dirs::config_dir()
+        } else {
+            // Everywhere else the config belongs with the log, which `Paths` puts
+            // in the local data directory.
+            dirs::data_local_dir()
+        };
+        assert_eq!(Some(dir), expected.map(|dir| dir.join("quietmouse")).as_deref());
+        // On Windows `config_dir` is the roaming profile, a different directory
+        // from the log's, which is how the config once ended up apart from it.
+        #[cfg(target_os = "windows")]
+        assert_ne!(
+            Some(dir),
+            dirs::config_dir().map(|dir| dir.join("quietmouse")).as_deref()
         );
     }
 
