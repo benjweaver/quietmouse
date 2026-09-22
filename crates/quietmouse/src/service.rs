@@ -394,9 +394,24 @@ pub fn autostart(enable: bool) -> anyhow::Result<()> {
     let home = dirs::home_dir().context("can't find your home folder")?;
     let plist = home.join("Library/LaunchAgents").join(format!("{LAUNCH_AGENT}.plist"));
     let domain = format!("gui/{}", current_uid()?);
+    let service = format!("{domain}/{LAUNCH_AGENT}");
     // Unload any earlier copy first; this fails harmlessly when none is loaded.
-    if let Err(error) = run_tool("launchctl", &["bootout", &format!("{domain}/{LAUNCH_AGENT}")]) {
+    if let Err(error) = run_tool("launchctl", &["bootout", &service]) {
         log::debug!("{error:#}");
+    }
+    // bootout returns as soon as it has asked the agent to stop, while the agent
+    // is still handing buttons back to the mouse. launchd keeps it listed until
+    // its process has exited, and loading the new agent before then fails with
+    // "Bootstrap failed: 5"; worse, a new agent that did start would find the
+    // old one still holding the instance lock and quietly exit.
+    let deadline = Instant::now() + STOP_WAIT;
+    while loaded(&service)? {
+        ensure!(
+            Instant::now() < deadline,
+            "the old quietmouse was still running {} seconds after being asked to stop",
+            STOP_WAIT.as_secs()
+        );
+        thread::sleep(STOP_POLL);
     }
     if enable {
         let agent = agent_path()?;
@@ -406,7 +421,16 @@ pub fn autostart(enable: bool) -> anyhow::Result<()> {
         launch_agent(&agent)
             .to_file_xml(&plist)
             .with_context(|| format!("can't write {}", plist.display()))?;
-        run_tool("launchctl", &["bootstrap", &domain, &plist.to_string_lossy()])?;
+        // Straight after an agent goes, launchd can still refuse the new one for a
+        // moment with the same error, so that's retried too.
+        let plist = plist.to_string_lossy();
+        while let Err(error) = run_tool("launchctl", &["bootstrap", &domain, &plist]) {
+            if Instant::now() >= deadline {
+                return Err(error);
+            }
+            log::debug!("{error:#}");
+            thread::sleep(STOP_POLL);
+        }
         println!(
             "quietmouse is starting now and will start whenever you log in ({})",
             agent.display()
@@ -418,6 +442,18 @@ pub fn autostart(enable: bool) -> anyhow::Result<()> {
         println!("quietmouse won't start when you log in");
     }
     Ok(())
+}
+
+/// Whether launchd still has `service` loaded.
+#[cfg(target_os = "macos")]
+fn loaded(service: &str) -> anyhow::Result<bool> {
+    let status = Command::new("launchctl")
+        .args(["print", service])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .context("can't run launchctl")?;
+    Ok(status.success())
 }
 
 /// The LaunchAgent: start `agent` at log-in, and again if it crashes.

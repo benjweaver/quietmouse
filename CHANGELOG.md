@@ -5,6 +5,18 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Fixed
+
+- `quietmouse autostart on` on macOS no longer fails with "Bootstrap failed: 5"
+  and leaves quietmouse not running, as it usually did when replacing a running
+  copy, such as straight after `brew upgrade`. Unloading the old LaunchAgent
+  returns at once, while the old agent is still handing the buttons back to the
+  mouse, and launchd refuses a new one under the same name until the old one
+  has exited. It now waits for that, up to 10 seconds, before loading the new
+  one.
+
 ## [0.1.21] - 2026-09-22
 
 ### Fixed
