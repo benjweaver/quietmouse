@@ -5,6 +5,17 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [0.1.20] - 2026-09-22
+
+### Fixed
+
+- `quietmoused` on macOS starts again after 0.1.19 broke it for anyone installed
+  outside Homebrew's own linking. It had moved inside `quietmoused.app`
+  entirely, but a package manager's `bin` is a symlink farm built from
+  individual files; a whole directory sitting there never gets linked out to
+  where `quietmouse` looks for it. `quietmoused` is a plain symlink into the
+  bundle again, so it lands correctly everywhere the binary itself used to.
+
 ## [0.1.19] - 2026-09-22
 
 ### Changed
