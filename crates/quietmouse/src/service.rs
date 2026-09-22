@@ -168,22 +168,58 @@ pub fn start() -> anyhow::Result<()> {
         .stderr(Stdio::null())
         .spawn()
         .with_context(|| format!("can't start {}", agent.display()))?;
-    println!("Started quietmouse in the background. Log: {}", paths.log().display());
+    println!(
+        "Started quietmouse in the background. It writes {} only if something goes wrong.",
+        paths.log().display()
+    );
     Ok(())
 }
 
-/// The agent's log, rolling the previous one over once it passes [`LOG_LIMIT`].
-pub fn open_log() -> anyhow::Result<File> {
-    let path = Paths::user()?.log();
-    if fs::metadata(&path).is_ok_and(|meta| meta.len() > LOG_LIMIT) {
-        fs::rename(&path, path.with_file_name("quietmouse.old.log"))
-            .with_context(|| format!("can't roll over {}", path.display()))?;
+/// The agent's log: the file it writes problems to, opened when it has one.
+///
+/// The agent records warnings and errors only, and a run with nothing to report
+/// writes nothing, so the file exists only when something has gone wrong. Watch
+/// a healthy run with `quietmouse run -v` instead.
+pub struct Log {
+    path: PathBuf,
+    file: Option<File>,
+}
+
+impl Log {
+    fn file(&mut self) -> io::Result<&mut File> {
+        match &mut self.file {
+            Some(file) => Ok(file),
+            slot => {
+                // Rolling over here, rather than when the agent starts, leaves
+                // the last run's log alone until there's something to add.
+                if fs::metadata(&self.path).is_ok_and(|meta| meta.len() > LOG_LIMIT) {
+                    fs::rename(&self.path, self.path.with_file_name("quietmouse.old.log"))?;
+                }
+                Ok(slot.insert(OpenOptions::new().create(true).append(true).open(&self.path)?))
+            }
+        }
     }
-    OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .with_context(|| format!("can't open {}", path.display()))
+}
+
+impl io::Write for Log {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.file()?.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match &mut self.file {
+            Some(file) => file.flush(),
+            None => Ok(()),
+        }
+    }
+}
+
+/// Where the agent will write, if it needs to. Nothing is created yet.
+pub fn open_log() -> anyhow::Result<Log> {
+    Ok(Log {
+        path: Paths::user()?.log(),
+        file: None,
+    })
 }
 
 /// The agent binary, installed next to this one.

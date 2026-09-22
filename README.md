@@ -199,9 +199,11 @@ quietmouse config --init    # write a config, then edit it
 quietmouse autostart on     # start now, and whenever you log in
 ```
 
-`quietmoused` is the background agent. It has no window, and it logs to `quietmouse.log`
-in `~/Library/Application Support/quietmouse`, `~/.local/share/quietmouse` or
-`%LOCALAPPDATA%\quietmouse`. `autostart on` registers it for your account only: a
+`quietmoused` is the background agent. It has no window, and it keeps quiet: it writes
+`quietmouse.log` in `~/Library/Application Support/quietmouse`,
+`~/.local/share/quietmouse` or `%LOCALAPPDATA%\quietmouse` only when something goes
+wrong, so no file at all is the healthy state. To watch it working, stop it and run
+`quietmouse run -v`, which prints every device, swipe and action as it happens. `autostart on` registers it for your account only: a
 LaunchAgent in `~/Library/LaunchAgents` on macOS, a systemd user service on Linux, or
 a `quietmouse` shortcut in your Startup folder on Windows, which Task Manager's Startup
 apps lists and can switch off. `quietmouse autostart off` removes it.

@@ -5,6 +5,16 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Changed
+
+- The background agent keeps quiet. It logged every start, stop, connection and
+  reconnection, so `quietmouse.log` filled with lines nobody reads and existed
+  on every machine. It now records warnings and errors only, and doesn't create
+  the file until it has one, so no log at all is the healthy state. Watching it
+  work is what `quietmouse run -v` is for, which is unchanged.
+
 ## [0.1.17] - 2026-09-22
 
 ### Fixed

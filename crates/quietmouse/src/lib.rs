@@ -136,11 +136,13 @@ pub fn cli_main() -> ExitCode {
 
 /// Entry point of `quietmoused`: the daemon with the default config, logging to a file.
 pub fn agent_main() -> ExitCode {
-    // Without a console there's nowhere to report failing to open the log itself.
+    // Without a console there's nowhere to report not finding anywhere to log.
     let Ok(log) = service::open_log() else {
         return ExitCode::FAILURE;
     };
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_filter("info")))
+    // Warnings and errors only: the agent has no window, so its log is for what
+    // went wrong. `quietmouse run -v` is the way to watch it working.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_filter("warn")))
         .format_target(false)
         .target(env_logger::Target::Pipe(Box::new(log)))
         .init();
