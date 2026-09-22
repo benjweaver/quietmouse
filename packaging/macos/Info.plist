@@ -5,7 +5,7 @@
 	<key>CFBundleExecutable</key>
 	<string>quietmoused</string>
 	<key>CFBundleIdentifier</key>
-	<string>io.github.benjweaver.quietmouse.quietmoused</string>
+	<string>__BUNDLE_ID__</string>
 	<key>CFBundleName</key>
 	<string>quietmoused</string>
 	<key>CFBundleDisplayName</key>

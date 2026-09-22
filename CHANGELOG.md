@@ -5,6 +5,18 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Fixed
+
+- Upgrading on macOS asks for Input Monitoring and Accessibility again, as it
+  did before 0.1.19. The bundle gave every version the same ID, and macOS keys
+  a bundle's permissions by its ID but pins them to the exact build. So after
+  an upgrade the switches stayed on but matched nothing, with no prompt, and
+  quietmouse couldn't read the mouse or send keystrokes. The ID now carries the
+  version, so each upgrade is a new entry that macOS prompts for. Upgrading
+  from 0.1.19 or 0.1.20 prompts on its own; the old entry can be removed.
+
 ## [0.1.20] - 2026-09-22
 
 ### Fixed

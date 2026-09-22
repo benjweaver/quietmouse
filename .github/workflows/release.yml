@@ -106,8 +106,17 @@ jobs:
                 "target/aarch64-apple-darwin/release/quietmoused" "target/x86_64-apple-darwin/release/quietmoused"
               cp packaging/macos/quietmouse.icns "$bundle/Contents/Resources/"
               version=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
-              sed "s/__VERSION__/$version/g" packaging/macos/Info.plist > "$bundle/Contents/Info.plist"
-              codesign --force --sign - --identifier "io.github.benjweaver.quietmouse.quietmoused" "$bundle"
+              # The bundle ID carries the version. macOS keys a bundle's privacy
+              # permissions by its bundle ID but pins them to the exact build, and an
+              # ad-hoc signature has nothing stable to pin to but the build's hash. With
+              # one ID for every version, an upgrade inherits a switch that's on but
+              # matches nothing: no prompt, no permission. A new ID per version makes
+              # each upgrade a new entry that macOS asks about, as the versioned
+              # Homebrew path did for the bare binary.
+              bundle_id="io.github.benjweaver.quietmouse.quietmoused.v$(echo "$version" | tr . -)"
+              sed -e "s/__VERSION__/$version/g" -e "s/__BUNDLE_ID__/$bundle_id/g" \
+                packaging/macos/Info.plist > "$bundle/Contents/Info.plist"
+              codesign --force --sign - --identifier "$bundle_id" "$bundle"
               codesign --verify --all-architectures --strict "$bundle"
               ln -s quietmoused.app/Contents/MacOS/quietmoused "$dir/quietmoused"
 
