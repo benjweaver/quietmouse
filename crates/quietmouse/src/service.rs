@@ -216,33 +216,41 @@ fn resolve(agent: PathBuf) -> PathBuf {
 ///
 /// Nothing here ties permissions to a binary, so there's nothing to gain, and
 /// two things to lose. Resolving turns a package manager's stable shortcut into
-/// whatever it points at today, and the Run key would then name a folder that
-/// the next upgrade replaces: no error, just no quietmouse at sign-in. It also
-/// returns an extended-length `\\?\C:\...` path, which not everything that
-/// reads the Run key copes with.
+/// whatever it points at today, and the startup shortcut would then point into
+/// a folder that the next upgrade replaces: no error, just no quietmouse at
+/// sign-in. It also returns an extended-length `\\?\C:\...` path, which not
+/// everything that starts programs copes with.
 #[cfg(target_os = "windows")]
 fn resolve(agent: PathBuf) -> PathBuf {
     agent
 }
 
-/// Adds or removes the agent in the per-user Run key, which needs no admin rights.
+/// Starts the agent at sign-in from a shortcut in the per-user Startup folder,
+/// which needs no admin rights and is listed in Task Manager's Startup apps.
+///
+/// Older versions used an entry in the per-user Run key. On one Windows 11 PC
+/// Explorer skipped every entry added there, Windows' own `cmd.exe` included,
+/// while it started a shortcut in the Startup folder at the same sign-in; so
+/// the Run entry is removed wherever it's found.
 #[cfg(target_os = "windows")]
 pub fn autostart(enable: bool) -> anyhow::Result<()> {
-    const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-    const RUN_VALUE: &str = "quietmouse";
-    let key = windows_registry::CURRENT_USER
-        .create(RUN_KEY)
-        .context("can't open the per-user Run key")?;
-    let switched_off = startup_switched_off(RUN_VALUE);
+    let shortcut = startup_folder()?.join(SHORTCUT);
+    let switched_off = startup_switched_off(STARTUP_FOLDER_LIST, SHORTCUT);
+    remove_run_entry()?;
     if enable {
         let agent = agent_path()?;
-        key.set_string(RUN_VALUE, format!("\"{}\"", agent.display()))
-            .context("can't add quietmouse to the Run key")?;
-        // Asking for it on means on. Windows skips an entry switched off in
-        // Task Manager or Settings, and on Windows 11 it skipped one with no
-        // switch recorded at all, so the entry is marked on either way.
-        switch_on_at_startup(RUN_VALUE)?;
+        // Windows makes the folder, but it can go missing, and then nothing in
+        // it runs until it's back.
+        if let Some(folder) = shortcut.parent() {
+            fs::create_dir_all(folder).with_context(|| format!("can't create {}", folder.display()))?;
+        }
+        mslnk::ShellLink::new(&agent)
+            .and_then(|link| link.create_lnk(&shortcut))
+            .with_context(|| format!("can't create {}", shortcut.display()))?;
+        // Asking for it on means on, so a switch left off in Task Manager or
+        // Settings is cleared; a shortcut with none recorded is started.
         if switched_off == Some(true) {
+            clear_startup_switch(STARTUP_FOLDER_LIST, SHORTCUT)?;
             println!("quietmouse had been switched off in Task Manager or Settings; it's switched back on");
         }
         println!("quietmouse will start whenever you sign in ({})", agent.display());
@@ -250,53 +258,83 @@ pub fn autostart(enable: bool) -> anyhow::Result<()> {
             start()?;
         }
     } else {
-        if key.get_string(RUN_VALUE).is_ok() {
-            key.remove_value(RUN_VALUE)
-                .context("can't remove quietmouse from the Run key")?;
+        match fs::remove_file(&shortcut) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => {
+                return Err(error).with_context(|| format!("can't remove {}", shortcut.display()));
+            }
+            _ => {}
         }
         // Left behind, the switch would apply to a later install.
         if switched_off.is_some() {
-            clear_startup_approval(RUN_VALUE)?;
+            clear_startup_switch(STARTUP_FOLDER_LIST, SHORTCUT)?;
         }
         println!("quietmouse won't start when you sign in");
     }
     Ok(())
 }
 
-/// Where Task Manager's Startup apps and Settings → Apps → Startup record the
-/// on/off switch for each Run entry. Switching an entry off there leaves the
-/// Run key alone and marks it here instead.
+/// The shortcut's name, which is also what its startup switch is recorded under.
 #[cfg(target_os = "windows")]
-const STARTUP_APPROVED_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+const SHORTCUT: &str = "quietmouse.lnk";
 
-/// Whether the Run entry `name` has been switched off, or `None` if Windows
+/// The per-user Startup folder, where Explorer keeps it: this follows any
+/// redirection, with the usual place as the fallback.
+#[cfg(target_os = "windows")]
+fn startup_folder() -> anyhow::Result<PathBuf> {
+    windows_registry::CURRENT_USER
+        .open(r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders")
+        .and_then(|key| key.get_string("Startup"))
+        .ok()
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| dirs::config_dir().map(|dir| dir.join(r"Microsoft\Windows\Start Menu\Programs\Startup")))
+        .context("can't find the Startup folder")
+}
+
+/// Removes the Run entry older versions started from, and its startup switch.
+#[cfg(target_os = "windows")]
+fn remove_run_entry() -> anyhow::Result<()> {
+    const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+    const RUN_VALUE: &str = "quietmouse";
+    let key = windows_registry::CURRENT_USER
+        .create(RUN_KEY)
+        .context("can't open the per-user Run key")?;
+    if key.get_string(RUN_VALUE).is_ok() {
+        key.remove_value(RUN_VALUE)
+            .context("can't remove the old entry in the Run key")?;
+    }
+    if startup_switched_off(RUN_LIST, RUN_VALUE).is_some() {
+        clear_startup_switch(RUN_LIST, RUN_VALUE)?;
+    }
+    Ok(())
+}
+
+/// Where Task Manager's Startup apps and Settings → Apps → Startup record the
+/// on/off switch for each startup item, one list per kind. Switching an item
+/// off there leaves the item alone and marks it here instead.
+#[cfg(target_os = "windows")]
+const STARTUP_APPROVED: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved";
+#[cfg(target_os = "windows")]
+const STARTUP_FOLDER_LIST: &str = "StartupFolder";
+#[cfg(target_os = "windows")]
+const RUN_LIST: &str = "Run";
+
+/// Whether the item `name` in `list` has been switched off, or `None` if Windows
 /// holds no switch for it. The first byte of the record is odd when it's off.
 #[cfg(target_os = "windows")]
-fn startup_switched_off(name: &str) -> Option<bool> {
+fn startup_switched_off(list: &str, name: &str) -> Option<bool> {
     let record = windows_registry::CURRENT_USER
-        .open(STARTUP_APPROVED_KEY)
+        .open(format!(r"{STARTUP_APPROVED}\{list}"))
         .and_then(|key| key.get_bytes(name))
         .ok()?;
     Some(record.first().is_some_and(|flags| flags & 1 == 1))
 }
 
-/// Marks the Run entry `name` as switched on, with the record Task Manager
-/// writes when you enable an entry: an even first byte and no time it was
-/// switched off.
+/// Removes the switch for the item `name` in `list`.
 #[cfg(target_os = "windows")]
-fn switch_on_at_startup(name: &str) -> anyhow::Result<()> {
-    const ON: [u8; 12] = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+fn clear_startup_switch(list: &str, name: &str) -> anyhow::Result<()> {
     windows_registry::CURRENT_USER
-        .create(STARTUP_APPROVED_KEY)
-        .and_then(|key| key.set_bytes(name, windows_registry::Type::Bytes, &ON))
-        .context("can't switch quietmouse on in the startup list")
-}
-
-/// Removes the switch for `name`, so none is left to apply to a later install.
-#[cfg(target_os = "windows")]
-fn clear_startup_approval(name: &str) -> anyhow::Result<()> {
-    windows_registry::CURRENT_USER
-        .create(STARTUP_APPROVED_KEY)
+        .create(format!(r"{STARTUP_APPROVED}\{list}"))
         .and_then(|key| key.remove_value(name))
         .context("can't reset quietmouse's startup switch")
 }

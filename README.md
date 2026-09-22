@@ -203,7 +203,8 @@ quietmouse autostart on     # start now, and whenever you log in
 in `~/Library/Application Support/quietmouse`, `~/.local/share/quietmouse` or
 `%LOCALAPPDATA%\quietmouse`. `autostart on` registers it for your account only: a
 LaunchAgent in `~/Library/LaunchAgents` on macOS, a systemd user service on Linux, or
-the `HKCU\…\Run` key on Windows. `quietmouse autostart off` removes it.
+a `quietmouse` shortcut in your Startup folder on Windows, which Task Manager's Startup
+apps lists and can switch off. `quietmouse autostart off` removes it.
 
 `quietmouse start` and `quietmouse stop` start and stop the agent by hand. Only one
 instance runs at a time. Stopping, whether by `quietmouse stop`, Ctrl+C or SIGTERM,

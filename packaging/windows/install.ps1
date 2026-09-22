@@ -25,17 +25,16 @@ param([switch]$Uninstall, [switch]$Update)
 
     # `autostart on` switches quietmouse back on if it was switched off in Task
     # Manager or Settings, which is right when you ask for it but not when all
-    # you asked for was an update. So when it's switched off, the Run entry is
-    # just pointed at this copy and quietmouse started, leaving the switch alone.
+    # you asked for was an update. So when it's switched off, quietmouse is only
+    # started, leaving the switch and the Startup folder shortcut as they are;
+    # the shortcut already points here, since this folder never moves.
     function Register-Autostart {
-        $approved = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'
-        $switch = (Get-ItemProperty $approved -Name quietmouse -ErrorAction SilentlyContinue).quietmouse
+        $approved = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder'
+        $switch = (Get-ItemProperty $approved -Name 'quietmouse.lnk' -ErrorAction SilentlyContinue).'quietmouse.lnk'
         if (-not ($switch -and ($switch[0] -band 1))) {
             & $exe autostart on
             return
         }
-        $agent = Join-Path $dir 'quietmoused.exe'
-        Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name quietmouse -Value "`"$agent`""
         if (-not (Get-Process quietmoused -ErrorAction SilentlyContinue)) { & $exe start }
         Write-Host 'quietmouse is switched off at sign-in in Task Manager or Settings, so it stays that way. `quietmouse autostart on` switches it back on.'
     }

@@ -9,14 +9,16 @@ from its section below.
 
 ### Fixed
 
-- quietmouse starts at sign-in on Windows again. Windows keeps an on/off
-  switch for each startup entry apart from the entry itself, and at sign-in
-  Windows 11 skipped quietmouse's entry, which had no switch recorded, just as
-  it skipped the ones switched off in Task Manager; only the entry marked on
-  was started. `autostart on` now marks quietmouse's entry on, with the same
-  record Task Manager writes when you enable an entry, where 0.1.13 had
-  removed the record on the understanding that none meant on. Run
-  `quietmouse autostart on`, or update, to put it right.
+- quietmouse starts at sign-in on Windows. It used an entry in the per-user
+  Run key, and on a Windows 11 PC Explorer started none of the entries added
+  there, including one for Windows' own `cmd.exe`, while it kept starting the
+  one entry that had been there for weeks; nothing in the logs said why. A
+  shortcut in the Startup folder was started at the same sign-in, so
+  `autostart on` now puts a `quietmouse` shortcut there instead, creating the
+  folder if it has gone missing, and removes the old Run entry. It's listed in
+  Task Manager's Startup apps and can be switched off there, and updating
+  leaves it off if you have. Run `quietmouse autostart on`, or update, to move
+  over.
 
 ## [0.1.16] - 2026-09-21
 
