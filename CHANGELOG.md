@@ -5,7 +5,7 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
-## [Unreleased]
+## [0.1.17] - 2026-09-22
 
 ### Fixed
 
@@ -355,7 +355,8 @@ First release.
   key.
 - No network access, enforced in CI.
 
-[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.16...HEAD
+[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.17...HEAD
+[0.1.17]: https://github.com/benjweaver/quietmouse/compare/v0.1.16...v0.1.17
 [0.1.16]: https://github.com/benjweaver/quietmouse/compare/v0.1.15...v0.1.16
 [0.1.15]: https://github.com/benjweaver/quietmouse/compare/v0.1.14...v0.1.15
 [0.1.14]: https://github.com/benjweaver/quietmouse/compare/v0.1.13...v0.1.14
