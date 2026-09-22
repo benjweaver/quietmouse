@@ -93,9 +93,12 @@ Checksums are in `SHA256SUMS`.
   as `%LOCALAPPDATA%\Programs\quietmouse`. No installer and no admin rights (see
   [Running at login](#running-at-login)). The files aren't code-signed, so SmartScreen
   may warn about an unrecognised app.
-- **macOS** (one universal binary for Apple Silicon and Intel): unpack into a folder you
-  own, such as `~/.local/bin`, then run `xattr -d com.apple.quarantine quietmouse quietmoused`.
-  The binaries aren't signed or notarised, so Gatekeeper blocks them otherwise.
+- **macOS** (universal for Apple Silicon and Intel): unpack into a folder you own, such
+  as `~/.local/bin`, then run `xattr -dr com.apple.quarantine quietmouse quietmoused.app`.
+  Neither is signed or notarised, so Gatekeeper blocks them otherwise. `quietmoused` sits
+  inside `quietmoused.app`, a minimal app bundle with no window and no Dock icon, so
+  System Settings has a real icon for it under Privacy & Security instead of a
+  generic one.
 - **Linux** (x86_64): pick the file for your distribution. Each package installs the
   programs and the udev rule that lets your user open Logitech devices, and loads
   `uinput` at boot. The binaries are statically linked, so they don't depend on your
@@ -191,8 +194,8 @@ with the line they're on.
 ## Running at login
 
 Everything here is per user, with no admin rights, on every platform. Put `quietmouse`
-and `quietmoused` (`.exe` on Windows) in a folder you own: `~/.local/bin` on macOS and
-Linux, `%LOCALAPPDATA%\Programs\quietmouse` on Windows. Then:
+and `quietmoused` (`.exe` on Windows, `quietmoused.app` on macOS) in a folder you own:
+`~/.local/bin` on macOS and Linux, `%LOCALAPPDATA%\Programs\quietmouse` on Windows. Then:
 
 ```sh
 quietmouse config --init    # write a config, then edit it

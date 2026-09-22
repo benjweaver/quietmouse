@@ -5,6 +5,18 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Changed
+
+- `quietmoused` on macOS now lives inside a minimal `quietmoused.app` bundle
+  instead of sitting next to `quietmouse` as a bare binary. System Settings →
+  Privacy & Security reads an app's icon from the bundle its binary lives in;
+  a bare binary has none, so Accessibility and Input Monitoring listed
+  quietmoused under a generic icon. The bundle has no window and
+  `LSBackgroundOnly` keeps it out of the Dock and Cmd-Tab; the LaunchAgent
+  still starts the exact binary inside it, same as before.
+
 ## [0.1.18] - 2026-09-22
 
 ### Changed

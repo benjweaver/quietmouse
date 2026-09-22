@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>quietmoused</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.benjweaver.quietmouse.quietmoused</string>
+	<key>CFBundleName</key>
+	<string>quietmoused</string>
+	<key>CFBundleDisplayName</key>
+	<string>quietmouse</string>
+	<key>CFBundleIconFile</key>
+	<string>quietmouse.icns</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>__VERSION__</string>
+	<key>CFBundleVersion</key>
+	<string>__VERSION__</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>LSBackgroundOnly</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright (c) 2026 quietmouse contributors</string>
+</dict>
+</plist>
