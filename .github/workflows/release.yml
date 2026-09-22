@@ -91,12 +91,15 @@ jobs:
               codesign --force --sign - --identifier "io.github.benjweaver.quietmouse.quietmouse" "$dir/quietmouse"
               codesign --verify --all-architectures --strict "$dir/quietmouse"
 
-              # quietmoused goes inside a minimal .app bundle instead of sitting next to
-              # quietmouse as a bare binary. Privacy & Security reads an icon for
-              # Accessibility and Input Monitoring from the bundle a listed binary lives
-              # in; a bare binary has none, so it shows a generic icon there. The
-              # LaunchAgent (service.rs) still points straight at the binary inside the
-              # bundle, exactly the executable macOS itself would run.
+              # quietmoused's real binary goes inside a minimal .app bundle, with
+              # quietmoused itself a symlink into it. Privacy & Security reads an icon
+              # for Accessibility and Input Monitoring from the bundle a listed
+              # binary's path leads into; a bare binary has none, so it shows a generic
+              # icon there. It has to be a symlink, not the bundle sitting directly in
+              # this folder: Homebrew's `brew link` only symlinks individual files out
+              # of a keg's bin, silently skipping whole directories, so a bundle
+              # wouldn't reach the shared bin it puts on PATH. service.rs resolves the
+              # symlink to start the exact binary inside the bundle.
               bundle="$dir/quietmoused.app"
               mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
               lipo -create -output "$bundle/Contents/MacOS/quietmoused" \
@@ -106,6 +109,7 @@ jobs:
               sed "s/__VERSION__/$version/g" packaging/macos/Info.plist > "$bundle/Contents/Info.plist"
               codesign --force --sign - --identifier "io.github.benjweaver.quietmouse.quietmoused" "$bundle"
               codesign --verify --all-architectures --strict "$bundle"
+              ln -s quietmoused.app/Contents/MacOS/quietmoused "$dir/quietmoused"
 
               tar -czf "out/$dir.tar.gz" "$dir"
               ;;

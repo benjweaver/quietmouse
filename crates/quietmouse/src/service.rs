@@ -15,15 +15,16 @@ use crate::config::Config;
 
 #[cfg(target_os = "windows")]
 const AGENT: &str = "quietmoused.exe";
-#[cfg(target_os = "linux")]
+// On macOS this is a symlink into quietmoused.app/Contents/MacOS/quietmoused, not the
+// binary itself. It has to stay a plain sibling file, not a nested path: Homebrew's
+// `brew link` only symlinks individual files out of a keg's bin into the shared bin
+// it puts on PATH, silently skipping whole directories, so a bundle sitting directly
+// in bin never reaches it. The symlink is what gets a real bundle in front of System
+// Settings -> Privacy & Security, for a real icon under Accessibility and Input
+// Monitoring instead of a generic one, while resolve() below still finds the exact
+// binary inside it.
+#[cfg(not(target_os = "windows"))]
 const AGENT: &str = "quietmoused";
-// Inside a minimal .app bundle, so System Settings -> Privacy & Security can show a
-// real icon for it under Accessibility and Input Monitoring instead of a generic
-// one; a bare binary has no bundle for those lists to read an icon from. The
-// LaunchAgent below still starts this exact path directly, the same executable
-// macOS itself would run for a double-clicked app.
-#[cfg(target_os = "macos")]
-const AGENT: &str = "quietmoused.app/Contents/MacOS/quietmoused";
 
 /// Past this size the agent's log is kept as `quietmouse.old.log` and a new one started.
 const LOG_LIMIT: u64 = 1024 * 1024;
@@ -229,8 +230,7 @@ pub fn open_log() -> anyhow::Result<Log> {
     })
 }
 
-/// The agent binary, installed next to this one (on macOS, inside the .app
-/// bundle installed next to this one).
+/// The agent binary, installed next to this one.
 fn agent_path() -> anyhow::Result<PathBuf> {
     let agent = std::env::current_exe()
         .context("can't find this executable")?
