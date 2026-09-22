@@ -5,6 +5,19 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Fixed
+
+- quietmouse starts at sign-in on Windows again. Windows keeps an on/off
+  switch for each startup entry apart from the entry itself, and at sign-in
+  Windows 11 skipped quietmouse's entry, which had no switch recorded, just as
+  it skipped the ones switched off in Task Manager; only the entry marked on
+  was started. `autostart on` now marks quietmouse's entry on, with the same
+  record Task Manager writes when you enable an entry, where 0.1.13 had
+  removed the record on the understanding that none meant on. Run
+  `quietmouse autostart on`, or update, to put it right.
+
 ## [0.1.16] - 2026-09-21
 
 ### Changed

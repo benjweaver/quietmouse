@@ -238,10 +238,11 @@ pub fn autostart(enable: bool) -> anyhow::Result<()> {
         let agent = agent_path()?;
         key.set_string(RUN_VALUE, format!("\"{}\"", agent.display()))
             .context("can't add quietmouse to the Run key")?;
-        // Asking for it on means on: an entry still switched off would sit in
-        // the Run key doing nothing while this said it would start.
+        // Asking for it on means on. Windows skips an entry switched off in
+        // Task Manager or Settings, and on Windows 11 it skipped one with no
+        // switch recorded at all, so the entry is marked on either way.
+        switch_on_at_startup(RUN_VALUE)?;
         if switched_off == Some(true) {
-            clear_startup_approval(RUN_VALUE)?;
             println!("quietmouse had been switched off in Task Manager or Settings; it's switched back on");
         }
         println!("quietmouse will start whenever you sign in ({})", agent.display());
@@ -279,7 +280,19 @@ fn startup_switched_off(name: &str) -> Option<bool> {
     Some(record.first().is_some_and(|flags| flags & 1 == 1))
 }
 
-/// Forgets the switch for `name`, which Windows reads as switched on.
+/// Marks the Run entry `name` as switched on, with the record Task Manager
+/// writes when you enable an entry: an even first byte and no time it was
+/// switched off.
+#[cfg(target_os = "windows")]
+fn switch_on_at_startup(name: &str) -> anyhow::Result<()> {
+    const ON: [u8; 12] = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    windows_registry::CURRENT_USER
+        .create(STARTUP_APPROVED_KEY)
+        .and_then(|key| key.set_bytes(name, windows_registry::Type::Bytes, &ON))
+        .context("can't switch quietmouse on in the startup list")
+}
+
+/// Removes the switch for `name`, so none is left to apply to a later install.
 #[cfg(target_os = "windows")]
 fn clear_startup_approval(name: &str) -> anyhow::Result<()> {
     windows_registry::CURRENT_USER
