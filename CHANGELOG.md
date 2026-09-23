@@ -5,6 +5,28 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Added
+
+- `quietmouse pair` pairs a device with a Unifying, Lightspeed or Nano receiver:
+  it opens the receiver's pairing lock for 30 seconds (`--seconds` to change it)
+  and reports which device paired, or why none did. `--receiver` picks one when
+  several are plugged in. Bolt receivers pair with a passkey and aren't supported
+  yet.
+- `quietmouse unpair <device>` removes a device from a Unifying, Lightspeed or
+  Nano receiver, named by part of its name or by its slot number. Devices that
+  are asleep can be unpaired too, on receivers that keep pairing records. Asked
+  to unpair a Bluetooth device, it says where to remove it in the system's
+  Bluetooth settings, since the computer holds that pairing. Before unpairing a
+  device that no `[[device]]` in the config matches, such as a keyboard sharing
+  the receiver, it warns and asks; `--yes` skips the question.
+
+### Changed
+
+- `quietmouse list` shows every device paired with a receiver, marking the ones
+  that are asleep, where it used to show only the awake ones.
+
 ## [0.1.24] - 2026-09-22
 
 ### Changed

@@ -63,6 +63,27 @@ enum Command {
         #[arg(long, value_delimiter = ',', default_value = "gesture")]
         divert: Vec<String>,
     },
+    /// Pair a device with a Unifying, Lightspeed or Nano receiver.
+    Pair {
+        /// Part of the receiver's kind or USB product id, e.g. `unifying` or `c52b`;
+        /// needed only when more than one receiver is plugged in.
+        #[arg(short, long)]
+        receiver: Option<String>,
+        /// How long the receiver listens for the device.
+        #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u8).range(1..))]
+        seconds: u8,
+    },
+    /// Remove a device's pairing from a Unifying, Lightspeed or Nano receiver.
+    Unpair {
+        /// Part of the device's name, or its slot number as `quietmouse list` shows it.
+        device: String,
+        /// Part of the receiver's kind or USB product id, e.g. `unifying` or `c52b`.
+        #[arg(short, long)]
+        receiver: Option<String>,
+        /// Don't ask before unpairing a device the config doesn't set up.
+        #[arg(short, long)]
+        yes: bool,
+    },
     /// Apply the config and handle buttons and gestures in this terminal until stopped.
     Run {
         #[arg(short, long)]
@@ -119,6 +140,8 @@ pub fn cli_main() -> ExitCode {
         Command::Info { device } => cli::info(device.as_deref()),
         Command::Dpi { value, device } => cli::set_dpi(value, device.as_deref()),
         Command::Events { device, divert } => cli::events(device.as_deref(), &divert),
+        Command::Pair { receiver, seconds } => cli::pair(receiver.as_deref(), seconds),
+        Command::Unpair { device, receiver, yes } => cli::unpair(&device, receiver.as_deref(), yes),
         Command::Run { config } => run(config),
         Command::Start => service::start(),
         Command::Stop => service::stop(),
