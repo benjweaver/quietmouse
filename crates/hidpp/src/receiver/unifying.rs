@@ -4,7 +4,7 @@
 
 use std::time::{Duration, Instant};
 
-use super::{Connection, Paired, Pairing, PairingError, REG_RECEIVER_INFO, parse_connection};
+use super::{Connection, MAX_SLOTS, Paired, Pairing, PairingError, REG_RECEIVER_INFO, parse_connection};
 use crate::{DIRECT, Error, Link, Report, Result, Session};
 
 /// Pairing lock: `[action, device index, seconds]`.
@@ -15,15 +15,13 @@ const UNPAIR: u8 = 0x03;
 /// Sub-registers of [`REG_RECEIVER_INFO`] for slot 1; slot `n` adds `n - 1`.
 const PAIRING_INFO: u8 = 0x20;
 const DEVICE_NAME: u8 = 0x40;
-/// Slots on a Unifying receiver, the most any of these receivers has.
-const MAX_PAIRED: u8 = 6;
 const LOCK_NOTIFICATION: u8 = 0x4A;
 
 /// Every device the receiver has a pairing record for. Empty slots, and
 /// receivers that don't keep records (some Lightspeed ones), give nothing.
 pub(super) fn paired<L: Link>(session: &mut Session<L>) -> Result<Vec<Pairing>> {
     let mut paired = Vec::new();
-    for index in 1..=MAX_PAIRED {
+    for index in 1..=MAX_SLOTS {
         let slot = index - 1;
         // Params: [sub-register, destination id, report interval, wpid hi, wpid lo, ...].
         let info = match session.read_long_register(DIRECT, REG_RECEIVER_INFO, &[PAIRING_INFO + slot]) {

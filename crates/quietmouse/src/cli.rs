@@ -337,7 +337,8 @@ fn receiver_name(found: &Found) -> &'static str {
 
 /// Pairs a device with a receiver and reports what paired.
 pub fn pair(wanted: Option<&str>, seconds: u8) -> anyhow::Result<()> {
-    let mut found = scan(daemon::stop_signal()?)?;
+    let stop = daemon::stop_signal()?;
+    let mut found = scan(stop.clone())?;
     let mut receivers = receivers(&mut found, wanted)?;
     if receivers.len() > 1 {
         let names: Vec<String> = receivers
@@ -352,6 +353,9 @@ pub fn pair(wanted: Option<&str>, seconds: u8) -> anyhow::Result<()> {
     let target = receivers.remove(0);
     let kind = receiver_name(target);
     let protocol = Protocol::of(target.endpoint.product_id);
+    if !make_room(target, protocol, &stop)? {
+        return Ok(());
+    }
     let session = &mut target.session;
 
     match protocol {
@@ -414,6 +418,87 @@ pub fn pair(wanted: Option<&str>, seconds: u8) -> anyhow::Result<()> {
         Paired::Failed(error) => bail!("nothing paired: {error}"),
         Paired::Nothing => bail!("nothing paired before the receiver stopped listening"),
     }
+}
+
+/// If the receiver is full, offers to unpair a device to make room. False if
+/// the person chose not to, so there's no point pairing.
+///
+/// Receivers that don't say how many devices they hold are let through, as
+/// are ones that replace a pairing rather than fill up (Nano).
+fn make_room(target: &mut Found, protocol: Protocol, stop: &Receiver<()>) -> anyhow::Result<bool> {
+    let product_id = target.endpoint.product_id;
+    if receiver::replaces_pairings(product_id) {
+        return Ok(true);
+    }
+    let capacity = match receiver::capacity(&mut target.session, protocol) {
+        Ok(Some(capacity)) => usize::from(capacity),
+        Ok(None) => return Ok(true),
+        Err(error) => {
+            log::debug!(
+                "{}: can't read how many devices it holds: {error}",
+                target.endpoint.describe()
+            );
+            return Ok(true);
+        }
+    };
+    let slots = receiver_slots(target);
+    if slots.len() < capacity {
+        return Ok(true);
+    }
+
+    let kind = receiver_name(target);
+    let full = format!("the {kind} is full: {} of {capacity} slots are taken", slots.len());
+    if !std::io::stdin().is_terminal() {
+        bail!("{full}; make room with `quietmouse unpair <device>`, then pair again");
+    }
+    println!("{}. Unpair one to make room?", capitalize(&full));
+    for slot in &slots {
+        println!("  #{} {}", slot.index, slot.name);
+    }
+    let slot = loop {
+        let answer = ask("Slot to unpair, or Enter to cancel: ", stop)?;
+        let answer = answer.as_deref().unwrap_or_default().trim().trim_start_matches('#');
+        // Enter, or Ctrl+C.
+        if answer.is_empty() {
+            println!("Left every device paired.");
+            return Ok(false);
+        }
+        match slots.iter().find(|slot| answer.parse() == Ok(slot.index)) {
+            Some(slot) => break slot,
+            None => println!("{answer:?} isn't one of the slots listed."),
+        }
+    };
+    receiver::unpair(&mut target.session, protocol, slot.index)
+        .with_context(|| format!("couldn't unpair {} (#{})", slot.name, slot.index))?;
+    println!("Unpaired {} (#{}).\n", slot.name, slot.index);
+    Ok(true)
+}
+
+/// Asks a question on the terminal and waits for a line, or for Ctrl+C, which
+/// gives `None`. The line is read on a thread of its own, since a Ctrl+C
+/// handler is in place and reading directly would ignore it until Enter.
+fn ask(question: &str, stop: &Receiver<()>) -> anyhow::Result<Option<String>> {
+    print!("{question}");
+    std::io::stdout().flush()?;
+    let (tx, answer) = crossbeam_channel::bounded(1);
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        let _ = tx.send(std::io::stdin().read_line(&mut line).map(|_| line));
+    });
+    crossbeam_channel::select! {
+        recv(answer) -> line => Ok(Some(line??)),
+        recv(stop) -> _ => {
+            println!();
+            Ok(None)
+        }
+    }
+}
+
+fn capitalize(text: &str) -> String {
+    let mut chars = text.chars();
+    chars
+        .next()
+        .map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
 }
 
 /// The receiver's pairing records, or none if it doesn't keep them.

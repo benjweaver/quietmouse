@@ -10,7 +10,7 @@
 
 use std::time::{Duration, Instant};
 
-use super::{Connection, Paired, Pairing, PairingError, PairingStep, REG_RECEIVER_INFO};
+use super::{Connection, MAX_SLOTS, Paired, Pairing, PairingError, PairingStep, REG_RECEIVER_INFO};
 use crate::{DIRECT, Error, Link, Report, Result, Session};
 
 /// Short register that starts and stops discovery: `[seconds, action]`.
@@ -24,8 +24,6 @@ const UNPAIR: u8 = 0x03;
 /// Sub-registers of [`REG_RECEIVER_INFO`]; slot `n` adds `n`.
 const PAIRING_INFO: u8 = 0x50;
 const DEVICE_NAME: u8 = 0x60;
-/// Most devices a Bolt receiver holds.
-const MAX_PAIRED: u8 = 6;
 
 const PASSKEY_REQUEST: u8 = 0x4D;
 /// A key or click of the passkey; the address says what happened, using
@@ -49,7 +47,7 @@ const TYPED_PASSKEY: u8 = 0x01;
 /// Every device the receiver has a pairing record for, awake or not.
 pub(super) fn paired<L: Link>(session: &mut Session<L>) -> Result<Vec<Pairing>> {
     let mut paired = Vec::new();
-    for index in 1..=MAX_PAIRED {
+    for index in 1..=MAX_SLOTS {
         // Params: [sub-register, kind, wpid lo, wpid hi, serial x4, ...].
         let info = match session.read_long_register(DIRECT, REG_RECEIVER_INFO, &[PAIRING_INFO + index]) {
             Ok(info) => info,

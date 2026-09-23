@@ -7,7 +7,7 @@
 
 use std::fmt;
 
-use crate::{DIRECT, Link, Report, Result, Session};
+use crate::{DIRECT, Error, Link, Report, Result, Session};
 
 mod bolt;
 mod unifying;
@@ -29,6 +29,13 @@ const LINK_NOT_ESTABLISHED: u8 = 0x40;
 const MAX_DEVICE_INDEX: u8 = 0x0F;
 /// Bolt receiver's USB product id.
 const BOLT: u16 = 0xC548;
+/// Nano receivers' USB product ids.
+const NANO: [u16; 2] = [0xC52F, 0xC534];
+/// Sub-register of [`REG_RECEIVER_INFO`] with the receiver's serial and slot count:
+/// `[sub-register, serial x4, -, slots, ...]`.
+const RECEIVER_INFORMATION: u8 = 0x03;
+/// The most devices any receiver holds: six on Unifying and Bolt ones.
+const MAX_SLOTS: u8 = 6;
 
 /// Receiver family for USB product ids known to be receivers. Unknown receivers
 /// still work: they're recognised by answering a HID++ 2.0 ping with a 1.0 error.
@@ -37,7 +44,7 @@ pub fn kind(product_id: u16) -> Option<&'static str> {
         0xC52B | 0xC532 => Some("Unifying receiver"),
         BOLT => Some("Bolt receiver"),
         0xC539 | 0xC53A | 0xC53F | 0xC547 => Some("Lightspeed receiver"),
-        0xC52F | 0xC534 => Some("Nano receiver"),
+        id if NANO.contains(&id) => Some("Nano receiver"),
         _ => None,
     }
 }
@@ -56,6 +63,26 @@ impl Protocol {
     /// are taken to be older ones, which all use the pairing lock.
     pub fn of(product_id: u16) -> Self {
         if product_id == BOLT { Self::Bolt } else { Self::Unifying }
+    }
+}
+
+/// Whether pairing a new device replaces one already paired, as on Nano
+/// receivers, so a receiver that's full needs no room made.
+pub fn replaces_pairings(product_id: u16) -> bool {
+    NANO.contains(&product_id)
+}
+
+/// How many devices the receiver can hold, if it says.
+pub fn capacity<L: Link>(session: &mut Session<L>, protocol: Protocol) -> Result<Option<u8>> {
+    // Bolt receivers don't report it, and always hold six.
+    if protocol == Protocol::Bolt {
+        return Ok(Some(MAX_SLOTS));
+    }
+    match session.read_long_register(DIRECT, REG_RECEIVER_INFO, &[RECEIVER_INFORMATION]) {
+        // Receivers that answer with nonsense are treated as not saying.
+        Ok(info) => Ok(Some(info.param(6)).filter(|slots| (1..=MAX_SLOTS).contains(slots))),
+        Err(Error::Hidpp10(_)) => Ok(None),
+        Err(error) => Err(error),
     }
 }
 
@@ -201,6 +228,7 @@ pub fn announce_devices<L: Link>(session: &mut Session<L>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::MockLink;
 
     #[test]
     fn parses_connection_notifications() {
@@ -224,6 +252,36 @@ mod tests {
     }
 
     #[test]
+    fn reads_how_many_devices_a_receiver_holds() {
+        let receiver = |slots: u8| {
+            MockLink::new(move |request| {
+                vec![Report::long(
+                    DIRECT,
+                    request.sub_id(),
+                    request.address(),
+                    &[RECEIVER_INFORMATION, 0x12, 0x34, 0x56, 0x78, 0x00, slots],
+                )]
+            })
+        };
+        assert_eq!(
+            capacity(&mut Session::new(receiver(6)), Protocol::Unifying),
+            Ok(Some(6))
+        );
+        assert_eq!(capacity(&mut Session::new(receiver(0)), Protocol::Unifying), Ok(None));
+        let refusing = MockLink::new(|request| {
+            vec![Report::short(
+                DIRECT,
+                0x8F,
+                request.sub_id(),
+                &[request.address(), 0x02],
+            )]
+        });
+        assert_eq!(capacity(&mut Session::new(refusing), Protocol::Unifying), Ok(None));
+        let silent = MockLink::new(|_| Vec::new());
+        assert_eq!(capacity(&mut Session::new(silent), Protocol::Bolt), Ok(Some(6)));
+    }
+
+    #[test]
     fn knows_common_receivers() {
         assert_eq!(kind(0xC548), Some("Bolt receiver"));
         assert_eq!(kind(0xC52B), Some("Unifying receiver"));
@@ -231,5 +289,7 @@ mod tests {
         assert_eq!(Protocol::of(0xC548), Protocol::Bolt);
         assert_eq!(Protocol::of(0xC52B), Protocol::Unifying);
         assert_eq!(Protocol::of(0xC999), Protocol::Unifying);
+        assert!(replaces_pairings(0xC534));
+        assert!(!replaces_pairings(0xC52B));
     }
 }

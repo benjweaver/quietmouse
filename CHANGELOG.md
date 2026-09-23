@@ -16,7 +16,10 @@ from its section below.
   it: typed on a keyboard, or clicked on a mouse as a sequence of left and right
   clicks, laid out in numbered columns and ticked off as the device reports
   each one. If the receiver rejects the passkey, it says how many clicks or
-  digits the device got. `--receiver` picks one when several are plugged in.
+  digits the device got. If the receiver is full, it lists what's paired and
+  offers to unpair one first, rather than letting the attempt fail; Nano
+  receivers, which replace a pairing instead, aren't asked. `--receiver` picks
+  one when several are plugged in.
 - `quietmouse unpair <device>` removes a device from a receiver, named by part
   of its name or by its slot number. Devices that are asleep can be unpaired
   too, on receivers that keep pairing records. Asked to unpair a Bluetooth
