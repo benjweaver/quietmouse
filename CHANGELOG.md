@@ -5,18 +5,25 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
-## [0.1.23] - 2026-09-23
+## [Unreleased]
 
-### Fixed
+### Changed
 
-- quietmoused gets its icon in System Settings → Privacy & Security after an
-  upgrade, not a blank app icon. The icon comes from macOS's register of apps
-  at the moment the agent asks for its permissions, and a bundle Homebrew has
-  only just unpacked often isn't registered yet: with `autostart on` no longer
-  waiting on a failed first try, 0.1.22 asked in the same second it was
-  registered, and its entries stayed blank. `autostart on` now registers the
-  bundle before starting the agent. An entry already listed blank stays that
-  way until the next upgrade adds a new one.
+- `autostart on` no longer registers `quietmoused.app` with LaunchServices, which
+  0.1.23 added to give quietmoused an icon under Input Monitoring. It changed
+  nothing: on macOS 27, quietmoused has no Input Monitoring entry of its own.
+  Switching it on under Device Control and Data Access, where it is listed with
+  its icon, also let it monitor input. The blank quietmoused row that some Macs
+  show under Input Monitoring is left over from 0.1.20, points at a file that
+  no longer exists, and can be removed.
+
+## [0.1.23] - 2026-09-22
+
+### Changed
+
+- `autostart on` registers `quietmoused.app` with LaunchServices before starting
+  the agent, meant to give quietmoused its icon under Input Monitoring. It had
+  no effect; see the next release.
 
 ## [0.1.22] - 2026-09-22
 
