@@ -5,6 +5,23 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [0.1.27] - 2026-09-22
+
+### Fixed
+
+- Devices paired with a receiver are set up on Windows. Each receiver was
+  opened as two separate devices, neither able to reach what was paired with it.
+- A button the device won't let quietmouse take over no longer stops the
+  buttons after it from being set up, and the ones before it are handed back
+  when quietmouse stops instead of staying dead until the mouse reconnects.
+- `cycle_dpi` moves on past a value the mouse can't give exactly, rather than
+  going back to the start of the list each time.
+- `quietmouse run` in a terminal keeps running when a macOS permission is
+  granted, and says to restart it, instead of exiting. The background agent
+  still restarts itself to pick the permission up.
+- `quietmouse events` hands back the controls it had taken when a later one
+  can't be taken, instead of leaving them doing nothing.
+
 ## [0.1.26] - 2026-09-22
 
 ### Changed
@@ -483,7 +500,8 @@ First release.
   key.
 - No network access, enforced in CI.
 
-[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.26...HEAD
+[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.27...HEAD
+[0.1.27]: https://github.com/benjweaver/quietmouse/compare/v0.1.26...v0.1.27
 [0.1.26]: https://github.com/benjweaver/quietmouse/compare/v0.1.25...v0.1.26
 [0.1.25]: https://github.com/benjweaver/quietmouse/compare/v0.1.24...v0.1.25
 [0.1.24]: https://github.com/benjweaver/quietmouse/compare/v0.1.23...v0.1.24
