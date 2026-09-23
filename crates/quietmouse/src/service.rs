@@ -2,6 +2,9 @@
 //! one running instance at a time, a stop request any process can make, a log
 //! file for the windowless agent, and starting at log-in on every platform.
 
+#[cfg(target_os = "windows")]
+mod stop_event;
+
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -28,8 +31,8 @@ const AGENT: &str = "quietmoused";
 
 /// Past this size the agent's log is kept as `quietmouse.old.log` and a new one started.
 const LOG_LIMIT: u64 = 1024 * 1024;
-/// How long `quietmouse stop` waits. The daemon notices a stop request within one
-/// device scan (half a second), then hands buttons back to the devices.
+/// How long `quietmouse stop` waits. The agent notices a stop request at once
+/// (an older one within its half-second scan), then hands buttons back to the devices.
 const STOP_WAIT: Duration = Duration::from_secs(10);
 const STOP_POLL: Duration = Duration::from_millis(200);
 
@@ -54,6 +57,8 @@ impl Paths {
         self.dir.join("quietmouse.lock")
     }
 
+    /// Only for stopping agents older than 0.1.26, which look for this file on
+    /// every scan. Newer ones are signalled instead; see [`stop`].
     fn stop(&self) -> PathBuf {
         self.dir.join("quietmouse.stop")
     }
@@ -93,7 +98,11 @@ fn acquire(path: &Path) -> anyhow::Result<Instance> {
         .open(path)
         .with_context(|| format!("can't open {}", path.display()))?;
     match file.try_lock() {
-        Ok(()) => Ok(Instance { _lock: file }),
+        Ok(()) => {
+            #[cfg(unix)]
+            record_pid(&file).with_context(|| format!("can't write to {}", path.display()))?;
+            Ok(Instance { _lock: file })
+        }
         Err(TryLockError::WouldBlock) => Err(AlreadyRunning.into()),
         Err(TryLockError::Error(error)) => Err(error).with_context(|| format!("can't lock {}", path.display())),
     }
@@ -113,14 +122,57 @@ fn held(path: &Path) -> anyhow::Result<bool> {
     }
 }
 
-pub fn stop_requested() -> bool {
-    Paths::user().is_ok_and(|paths| paths.stop().exists())
+/// Leaves this process's ID in the lock file it holds, for [`stop`] to signal.
+#[cfg(unix)]
+fn record_pid(mut file: &File) -> io::Result<()> {
+    use std::io::Write;
+    file.set_len(0)?;
+    write!(file, "{}", std::process::id())
 }
 
-pub fn clear_stop_request() {
-    if let Ok(paths) = Paths::user() {
-        remove_stop_file(&paths.stop());
+/// The agent's process ID from its lock file. `None` if the file doesn't hold
+/// one, as with agents older than 0.1.26.
+#[cfg(unix)]
+fn recorded_pid(lock: &Path) -> Option<nix::unistd::Pid> {
+    let pid: i32 = fs::read_to_string(lock).ok()?.trim().parse().ok()?;
+    // Zero and negative IDs name process groups, never the agent alone.
+    (pid > 0).then(|| nix::unistd::Pid::from_raw(pid))
+}
+
+/// Tells the agent to stop at once. On macOS and Linux that's SIGTERM, which it
+/// handles like Ctrl+C. `false` if it couldn't be told this way.
+#[cfg(unix)]
+fn signal_agent(paths: &Paths) -> anyhow::Result<bool> {
+    let Some(pid) = recorded_pid(&paths.lock()) else {
+        return Ok(false);
+    };
+    // Checked again just before signalling: once the agent exits, the system
+    // can hand its ID to another process.
+    if !held(&paths.lock())? {
+        return Ok(false);
     }
+    Ok(nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGTERM).is_ok())
+}
+
+/// Tells the agent to stop at once, through its named event. `false` if it
+/// couldn't be told this way.
+#[cfg(target_os = "windows")]
+fn signal_agent(_paths: &Paths) -> anyhow::Result<bool> {
+    Ok(stop_event::request())
+}
+
+/// Calls `on_stop` when `quietmouse stop` asks the agent to stop. On macOS and
+/// Linux the request is SIGTERM, which the agent's Ctrl+C handler already
+/// catches, so there's nothing more to set up.
+#[cfg(unix)]
+pub fn listen_for_stop(_on_stop: impl FnOnce() + Send + 'static) -> anyhow::Result<()> {
+    Ok(())
+}
+
+/// Calls `on_stop` when `quietmouse stop` asks the agent to stop.
+#[cfg(target_os = "windows")]
+pub fn listen_for_stop(on_stop: impl FnOnce() + Send + 'static) -> anyhow::Result<()> {
+    stop_event::listen(on_stop)
 }
 
 fn remove_stop_file(path: &Path) {
@@ -139,7 +191,9 @@ pub fn stop() -> anyhow::Result<()> {
         return Ok(());
     }
     let request = paths.stop();
-    File::create(&request).with_context(|| format!("can't create {}", request.display()))?;
+    if !signal_agent(&paths)? {
+        File::create(&request).with_context(|| format!("can't create {}", request.display()))?;
+    }
     let deadline = Instant::now() + STOP_WAIT;
     while Instant::now() < deadline {
         thread::sleep(STOP_POLL);
@@ -149,6 +203,8 @@ pub fn stop() -> anyhow::Result<()> {
             return Ok(());
         }
     }
+    // Left behind, it would stop the next older agent the moment it scans.
+    remove_stop_file(&request);
     bail!("quietmouse didn't stop within {} seconds", STOP_WAIT.as_secs())
 }
 
@@ -574,6 +630,26 @@ mod tests {
         assert!(second.to_string().contains("already running"));
         drop(instance);
         assert!(!held(&lock).unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_instance_leaves_its_pid_for_stop() {
+        let lock = scratch("pid").join("quietmouse.lock");
+        fs::write(&lock, "999999999 left by an older agent").unwrap();
+        let _instance = acquire(&lock).unwrap();
+        let pid = recorded_pid(&lock).unwrap();
+        assert_eq!(pid.as_raw().cast_unsigned(), std::process::id());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stop_never_signals_a_process_group() {
+        let lock = scratch("group").join("quietmouse.lock");
+        for text in ["", "0", "-1", "-42", "not a pid"] {
+            fs::write(&lock, text).unwrap();
+            assert!(recorded_pid(&lock).is_none(), "{text:?}");
+        }
     }
 
     #[test]

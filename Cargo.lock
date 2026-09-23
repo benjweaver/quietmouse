@@ -743,10 +743,12 @@ dependencies = [
  "hidpp",
  "log",
  "mslnk",
+ "nix 0.31.3",
  "plist",
  "serde",
  "toml",
  "windows-registry",
+ "windows-sys",
  "winresource",
 ]
 

@@ -43,9 +43,9 @@ pub fn request() -> Permissions {
 }
 
 /// The three system calls behind [`request`]. They take and return plain
-/// integers, with no pointers and nothing to free, which is why this is the
-/// only `unsafe` in quietmouse. Everything else is plain safe Rust; the
-/// workspace denies `unsafe_code` apart from this module.
+/// integers, with no pointers and nothing to free. The workspace denies
+/// `unsafe_code` apart from this module, the macOS and Windows device watchers
+/// in `hotplug`, and the Windows stop event in `service`.
 #[cfg(target_os = "macos")]
 #[allow(
     unsafe_code,

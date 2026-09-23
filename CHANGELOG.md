@@ -5,6 +5,23 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Changed
+
+- The agent no longer wakes on a timer. It finds devices as soon as the system
+  reports them arriving, so a mouse switched back from another computer gets
+  its buttons back sooner, and an idle agent sleeps until a device arrives or
+  leaves. It listens for the system's device notifications: inotify on `/dev`
+  on Linux, IOKit on macOS and the configuration manager on Windows. None of
+  them needs admin rights. It still looks again every few seconds, but only
+  while something is waiting: a device that won't open, or a macOS permission
+  not yet granted. If notifications can't be set up, it scans every half second
+  as before.
+- `quietmouse stop` reaches the agent at once instead of leaving a file for its
+  next scan: SIGTERM on macOS and Linux, and a named event on Windows. Agents
+  from earlier versions are still stopped the old way.
+
 ## [0.1.25] - 2026-09-22
 
 ### Added

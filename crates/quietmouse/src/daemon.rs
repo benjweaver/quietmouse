@@ -7,32 +7,52 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
-use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
+use crossbeam_channel::{Receiver, Sender, select};
 use hidapi::HidApi;
 
 use crate::config::Config;
 use crate::hid::{self, HidLink};
 use crate::inject::Injector;
 use crate::worker::{self, Outcome, Shared};
-use crate::{permissions, service};
+use crate::{hotplug, permissions, service};
 
-/// How often to look for newly attached receivers and devices, and for stop
-/// requests. A mouse switched back from another computer comes back as a new
-/// device, and its buttons do nothing special until the next look finds it, so
-/// this is most of the wait after switching. Only Logitech's devices are listed,
-/// which took about a millisecond on Windows against 25 to 90 for every HID
-/// device, since Windows opens each one to read it; looking this often costs
-/// next to nothing.
+/// How often to rescan when the system won't say when devices arrive and leave.
+/// A mouse switched back from another computer comes back as a new device, and
+/// its buttons do nothing special until the next look finds it, so this is most
+/// of the wait after switching. Only Logitech's devices are listed, which took
+/// about a millisecond on Windows against 25 to 90 for every HID device, since
+/// Windows opens each one to read it; looking this often costs next to nothing.
 const SCAN_INTERVAL: Duration = Duration::from_millis(500);
+/// How long to wait for more changes before rescanning. One device arrives as
+/// several collections in quick succession (each its own arrival on Windows),
+/// and a scan partway through would open it without all of them.
+const SETTLE: Duration = Duration::from_millis(100);
+/// The longest a steady stream of changes can put off a rescan.
+const SETTLE_AT_MOST: Duration = Duration::from_secs(1);
+/// How long after a worker ends to rescan, which starts a new one if its device
+/// is still there. The pause keeps a worker that fails straight away from
+/// being restarted in a tight loop.
+const RESTART_DELAY: Duration = Duration::from_millis(500);
+/// How often to retry devices that wouldn't open. Nothing announces that one
+/// can now be opened, so this is the one case the agent looks again unprompted.
+const RETRY_OPEN_EVERY: Duration = Duration::from_secs(2);
+/// How often to check for macOS permissions while one is still missing. Nothing
+/// announces that one was granted either.
+const PERMISSION_CHECK_EVERY: Duration = Duration::from_secs(1);
 /// How often to repeat a complaint about a device that won't open, usually
-/// because macOS hasn't been given Input Monitoring yet. Opening is retried on
-/// every scan, so granting it takes effect without restarting quietmouse.
+/// because macOS hasn't been given Input Monitoring yet. Opening is retried
+/// until it works, so granting it takes effect without restarting quietmouse.
 const REPEAT_WARNING_EVERY: Duration = Duration::from_secs(60);
 
 pub fn run(config: Config) -> anyhow::Result<()> {
     let _instance = service::lock_instance()?;
-    service::clear_stop_request();
     let shutdown = Shutdown::new();
+    let stopper = Arc::clone(&shutdown.sender);
+    service::listen_for_stop(move || {
+        log::info!("stop requested");
+        release(&stopper);
+    })
+    .context("can't listen for stop requests")?;
     let injector = Injector::spawn(config.desktop_switch_gap()).context("can't start keystroke output")?;
     let shared = Arc::new(Shared {
         config,
@@ -41,6 +61,8 @@ pub fn run(config: Config) -> anyhow::Result<()> {
     });
     let mut api = HidApi::new().context("can't start HID access")?;
     let mut workers: HashMap<String, JoinHandle<Outcome>> = HashMap::new();
+    // Each worker sends on this as it ends, however it ends.
+    let (ended_tx, ended) = crossbeam_channel::unbounded();
     // Endpoints left alone until they disappear, because nothing on them speaks HID++.
     let mut skipped: HashSet<String> = HashSet::new();
     // Endpoints that wouldn't open, and when that was last logged.
@@ -57,6 +79,8 @@ pub fn run(config: Config) -> anyhow::Result<()> {
     for advice in permissions::advice(permissions) {
         log::error!("{advice}");
     }
+    // Started before the first scan so that nothing arriving during it is missed.
+    let mut changes = hotplug::watch();
 
     loop {
         reap(&mut workers, &mut skipped);
@@ -94,9 +118,13 @@ pub fn run(config: Config) -> anyhow::Result<()> {
             log::debug!("opened {}", endpoint.describe());
             let key = endpoint.key.clone();
             let shared = Arc::clone(&shared);
+            let ended = Ended(ended_tx.clone());
             let handle = thread::Builder::new()
                 .name(format!("endpoint {:#06x}", endpoint.product_id))
-                .spawn(move || worker::run(link, &endpoint, shared))?;
+                .spawn(move || {
+                    let _ended = ended;
+                    worker::run(link, &endpoint, shared)
+                })?;
             workers.insert(key, handle);
         }
         if !permissions.all_granted() {
@@ -111,13 +139,37 @@ pub fn run(config: Config) -> anyhow::Result<()> {
             }
             permissions = now;
         }
-        if service::stop_requested() {
-            log::info!("stop requested");
-            shutdown.trigger();
-        }
-        match shutdown.receiver.recv_timeout(SCAN_INTERVAL) {
-            Err(RecvTimeoutError::Disconnected) => break,
-            Ok(()) | Err(RecvTimeoutError::Timeout) => {}
+        // Nothing else wakes the loop for these, so they get timers, but only
+        // while they're needed. An agent with every device open and nothing
+        // missing sleeps until something changes.
+        let look_again = [
+            changes.is_none().then_some(SCAN_INTERVAL),
+            (!unopened.is_empty()).then_some(RETRY_OPEN_EVERY),
+            (!permissions.all_granted()).then_some(PERMISSION_CHECK_EVERY),
+        ]
+        .into_iter()
+        .flatten()
+        .min();
+        let timer = look_again.map_or_else(crossbeam_channel::never, crossbeam_channel::after);
+        let watched = changes.clone().unwrap_or_else(crossbeam_channel::never);
+        select! {
+            recv(shutdown.receiver) -> message => if message.is_err() {
+                break;
+            },
+            recv(watched) -> message => if message.is_ok() {
+                settle(&watched);
+                log::debug!("devices changed; rescanning");
+            } else {
+                log::warn!("rescanning every {}ms instead", SCAN_INTERVAL.as_millis());
+                changes = None;
+            },
+            recv(ended) -> _ => {
+                while ended.try_recv().is_ok() {}
+                if shutdown.receiver.recv_timeout(RESTART_DELAY).is_err_and(|error| error.is_disconnected()) {
+                    break;
+                }
+            },
+            recv(timer) -> _ => {}
         }
     }
 
@@ -127,7 +179,6 @@ pub fn run(config: Config) -> anyhow::Result<()> {
             log::warn!("a device worker panicked while stopping");
         }
     }
-    service::clear_stop_request();
     // A non-zero exit is what asks launchd and systemd to start quietmouse again.
     if restart {
         log::info!("restarting");
@@ -135,6 +186,22 @@ pub fn run(config: Config) -> anyhow::Result<()> {
         std::process::exit(1);
     }
     Ok(())
+}
+
+/// Tells the daemon a worker has ended, when the worker's thread drops it,
+/// including by panicking.
+struct Ended(Sender<()>);
+
+impl Drop for Ended {
+    fn drop(&mut self) {
+        let _ = self.0.send(());
+    }
+}
+
+/// Waits for a burst of changes to end, so the rescan sees each device whole.
+fn settle(changes: &Receiver<()>) {
+    let deadline = Instant::now() + SETTLE_AT_MOST;
+    while Instant::now() < deadline && changes.recv_timeout(SETTLE).is_ok() {}
 }
 
 fn reap(workers: &mut HashMap<String, JoinHandle<Outcome>>, skipped: &mut HashSet<String>) {

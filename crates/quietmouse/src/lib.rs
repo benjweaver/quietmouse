@@ -12,6 +12,7 @@ mod connect;
 mod daemon;
 mod gesture;
 mod hid;
+mod hotplug;
 mod inject;
 mod keys;
 mod passkey;

@@ -272,10 +272,19 @@ its settings go back on within that of it waking up.
 No networking code is in the tree. CI fails if a network-capable crate (HTTP clients,
 TLS, async runtimes, telemetry SDKs) shows up in the dependency tree on any platform;
 see [`scripts/check-offline.sh`](scripts/check-offline.sh). Every compiler and clippy
-warning is an error, and `unsafe` is denied everywhere except one file,
-[`permissions.rs`](crates/quietmouse/src/permissions.rs), which declares the three
-macOS calls that ask for Input Monitoring and Accessibility. They take and return plain
-integers, with no pointers and nothing to free.
+warning is an error, and `unsafe` is denied everywhere except four small files
+that call the operating system directly:
+
+- [`permissions.rs`](crates/quietmouse/src/permissions.rs) declares the three macOS
+  calls that ask for Input Monitoring and Accessibility. They take and return plain
+  integers, with no pointers and nothing to free.
+- The macOS and Windows files in [`hotplug/`](crates/quietmouse/src/hotplug) register
+  for the system's notice of devices arriving and leaving, which only comes through
+  C callbacks. The callbacks carry no context pointer and only wake the agent to
+  rescan. Linux gets the same notice through a safe inotify API.
+- [`service/stop_event.rs`](crates/quietmouse/src/service/stop_event.rs) is the
+  Windows named event that `quietmouse stop` sets, standing in for the SIGTERM it
+  sends on macOS and Linux.
 
 ## Status
 
@@ -284,8 +293,7 @@ unit-tested, with CI on macOS, Linux and Windows. Tested on hardware so far: an
 MX Master 3S over Bluetooth on macOS and Windows. That covers reading settings,
 remapped buttons, tap and swipe gestures, switching devices, and handing the buttons
 back on exit. Receivers, and running on Linux, still need testing on real devices.
-Planned: per-application profiles, a tray/menu-bar settings app, and native hotplug
-notifications instead of rescanning every half second.
+Planned: per-application profiles and a tray/menu-bar settings app.
 
 ## Credits
 

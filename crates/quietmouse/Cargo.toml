@@ -26,10 +26,20 @@ plist = { version = "1.10.1", default-features = false }
 hidapi = { version = "2.6.7", default-features = false, features = ["windows-native"] }
 mslnk = "0.1.8"
 windows-registry = "0.100.0"
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Threading",
+] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 evdev = "0.13.2"
 hidapi = { version = "2.6.7", default-features = false, features = ["linux-native-basic-udev"] }
+nix = { version = "0.31.3", default-features = false, features = ["inotify"] }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31.3", default-features = false, features = ["signal"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 enigo = { version = "0.6.1", default-features = false }

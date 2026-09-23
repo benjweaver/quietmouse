@@ -8,8 +8,10 @@ edition = "2024"
 license = "MIT"
 
 [workspace.lints.rust]
-# Denied rather than forbidden for one exception: crates/quietmouse/src/permissions.rs,
-# which declares the macOS calls that ask for Input Monitoring and Accessibility.
+# Denied rather than forbidden for four exceptions, all in crates/quietmouse/src:
+# permissions.rs, which declares the macOS calls that ask for Input Monitoring and
+# Accessibility; the macOS and Windows files in hotplug/, which register for device
+# arrival and removal callbacks; and service/stop_event.rs, the Windows stop event.
 unsafe_code = "deny"
 warnings = "deny"
 
