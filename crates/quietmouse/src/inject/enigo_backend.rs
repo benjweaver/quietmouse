@@ -15,8 +15,10 @@ pub struct Backend {
 
 impl Backend {
     pub fn new() -> anyhow::Result<Self> {
-        let enigo = Enigo::new(&Settings::default())
-            .context("on macOS, allow this app under System Settings → Privacy & Security → Accessibility")?;
+        let enigo = Enigo::new(&Settings::default()).context(
+            "on macOS, allow this app under System Settings → Privacy & Security → Accessibility, \
+                 or Device Control and Data Access on newer macOS",
+        )?;
         Ok(Self { enigo })
     }
 

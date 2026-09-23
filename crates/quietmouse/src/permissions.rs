@@ -31,7 +31,9 @@ pub fn request() -> Permissions {
 #[cfg(target_os = "macos")]
 pub fn request() -> Permissions {
     if ffi::input_monitoring() == ffi::ACCESS_UNKNOWN {
-        // Shows the system prompt, and lists quietmouse under Input Monitoring.
+        // Shows the system prompt, and lists quietmouse under Input Monitoring. On
+        // macOS 27 it isn't listed there: switching it on under Device Control and
+        // Data Access answers this as allowed too.
         ffi::request_input_monitoring();
     }
     Permissions {
@@ -105,13 +107,14 @@ pub fn advice(permissions: Permissions) -> Vec<String> {
     let settings = "System Settings → Privacy & Security";
     if !permissions.input_monitoring {
         advice.push(format!(
-            "macOS is blocking quietmouse from reading devices: allow quietmoused under {settings} → Input Monitoring"
+            "macOS is blocking quietmouse from reading devices: allow quietmoused under {settings} → \
+             Input Monitoring, or Device Control and Data Access on newer macOS"
         ));
     }
     if !permissions.accessibility {
         advice.push(format!(
             "macOS is blocking quietmouse from sending keystrokes: allow quietmoused under {settings} → \
-             Accessibility (called Device Control and Data Access on newer macOS)"
+             Accessibility, or Device Control and Data Access on newer macOS"
         ));
     }
     advice
@@ -159,6 +162,11 @@ mod tests {
             assert_eq!(advice(none).len(), 2);
             assert!(advice(none)[0].contains("Input Monitoring"));
             assert!(advice(none)[1].contains("Accessibility"));
+            assert!(
+                advice(none)
+                    .iter()
+                    .all(|line| line.contains("Device Control and Data Access"))
+            );
         } else {
             assert_eq!(advice(none).len(), 0);
         }

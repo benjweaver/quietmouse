@@ -23,8 +23,8 @@ const ANNOUNCE_WAIT: Duration = Duration::from_millis(800);
 const EVENT_WAIT: Duration = Duration::from_secs(3600);
 
 #[cfg(target_os = "macos")]
-const ACCESS_HINT: &str =
-    "If a device is connected, allow this app under System Settings → Privacy & Security → Input Monitoring.";
+const ACCESS_HINT: &str = "If a device is connected, allow this app under System Settings → Privacy & Security → \
+                           Input Monitoring, or Device Control and Data Access on newer macOS.";
 #[cfg(target_os = "linux")]
 const ACCESS_HINT: &str = "If a device is connected, install packaging/linux/70-quietmouse.rules and replug it.";
 #[cfg(target_os = "windows")]

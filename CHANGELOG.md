@@ -16,6 +16,10 @@ from its section below.
   its icon, also let it monitor input. The blank quietmoused row that some Macs
   show under Input Monitoring is left over from 0.1.20, points at a file that
   no longer exists, and can be removed.
+- When macOS blocks quietmouse, the message names Device Control and Data
+  Access as well as Input Monitoring or Accessibility. It pointed only at Input
+  Monitoring for reading the mouse, a list quietmoused doesn't appear in on
+  macOS 27.
 
 ## [0.1.23] - 2026-09-22
 

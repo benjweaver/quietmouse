@@ -211,7 +211,8 @@ fn open(api: &HidApi, path: &CStr) -> anyhow::Result<HidDevice> {
     api.open_path(path).map_err(|error| {
         let message = error.to_string();
         let hint = if message.contains("not permitted") {
-            "\nmacOS blocked access: allow this app under System Settings → Privacy & Security → Input Monitoring"
+            "\nmacOS blocked access: allow this app under System Settings → Privacy & Security → Input Monitoring, \
+             or Device Control and Data Access on newer macOS"
         } else if message.contains("ermission denied") {
             "\nInstall packaging/linux/70-quietmouse.rules so your user can open Logitech devices"
         } else {
