@@ -44,7 +44,10 @@ const PERMISSION_CHECK_EVERY: Duration = Duration::from_secs(1);
 /// until it works, so granting it takes effect without restarting quietmouse.
 const REPEAT_WARNING_EVERY: Duration = Duration::from_secs(60);
 
-pub fn run(config: Config) -> anyhow::Result<()> {
+/// Runs until stopped. `agent` is set for the background agent, which launchd
+/// or systemd starts again when it exits with a failure; `quietmouse run` in a
+/// terminal has nothing to do that.
+pub fn run(config: Config, agent: bool) -> anyhow::Result<()> {
     let _instance = service::lock_instance()?;
     let shutdown = Shutdown::new();
     let stopper = Arc::clone(&shutdown.sender);
@@ -133,9 +136,13 @@ pub fn run(config: Config) -> anyhow::Result<()> {
                 // macOS keeps to the answer it gave this process, so a fresh one
                 // is the only way to use what was just granted. Exiting hands
                 // that to launchd or systemd, which start quietmouse again.
-                log::info!("a permission was granted; restarting to pick it up");
-                shutdown.trigger();
-                restart = true;
+                if agent {
+                    log::info!("a permission was granted; restarting to pick it up");
+                    shutdown.trigger();
+                    restart = true;
+                } else {
+                    log::warn!("a permission was granted; stop and start `quietmouse run` again to pick it up");
+                }
             }
             permissions = now;
         }

@@ -144,7 +144,7 @@ pub fn cli_main() -> ExitCode {
         Command::Events { device, divert } => cli::events(device.as_deref(), &divert),
         Command::Pair { receiver, seconds } => cli::pair(receiver.as_deref(), seconds),
         Command::Unpair { device, receiver, yes } => cli::unpair(&device, receiver.as_deref(), yes),
-        Command::Run { config } => run(config),
+        Command::Run { config } => run(config, false),
         Command::Start => service::start(),
         Command::Stop => service::stop(),
         Command::Autostart { state } => service::autostart(matches!(state, Switch::On)),
@@ -171,7 +171,7 @@ pub fn agent_main() -> ExitCode {
         .format_target(false)
         .target(env_logger::Target::Pipe(Box::new(log)))
         .init();
-    match run(None) {
+    match run(None, true) {
         Ok(()) => ExitCode::SUCCESS,
         // Started twice, say at log-in and by hand: the running instance carries on,
         // and a success here stops launchd or systemd from retrying.
@@ -186,7 +186,7 @@ pub fn agent_main() -> ExitCode {
     }
 }
 
-fn run(config: Option<PathBuf>) -> anyhow::Result<()> {
+fn run(config: Option<PathBuf>, agent: bool) -> anyhow::Result<()> {
     let path = Config::resolve_path(config)?;
     if !path.exists() {
         anyhow::bail!(
@@ -196,5 +196,5 @@ fn run(config: Option<PathBuf>) -> anyhow::Result<()> {
     }
     let config = Config::load(&path)?;
     log::info!("using {}", path.display());
-    daemon::run(config)
+    daemon::run(config, agent)
 }

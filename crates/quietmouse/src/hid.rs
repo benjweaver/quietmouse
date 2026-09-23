@@ -101,16 +101,28 @@ fn hidpp_report_id(info: &DeviceInfo) -> Option<u8> {
     }
 }
 
-/// Windows gives each top-level collection its own path (`...&col01#...`,
-/// `...&col02#...`); dropping that part groups them. Elsewhere one path covers all.
+/// Windows gives each top-level collection its own path, which differs in two
+/// places: the collection number in the hardware ID (`...&col01#`) and the last
+/// part of the instance ID after it (`#8&2b1c&0&0000#`, `...&0001#`). Dropping
+/// both groups them. Elsewhere one path covers all.
 fn endpoint_key(path: &str) -> String {
     let lower = path.to_ascii_lowercase();
-    let Some(start) = lower.find("&col") else {
+    let mut parts: Vec<&str> = lower.split('#').collect();
+    let Some(hardware) = parts.iter().position(|part| part.contains("&col")) else {
         return lower;
     };
-    let digits = &lower[start + 4..];
+    let start = parts[hardware].find("&col").unwrap_or_default();
+    let digits = &parts[hardware][start + 4..];
     let end = start + 4 + digits.find(|c: char| !c.is_ascii_hexdigit()).unwrap_or(digits.len());
-    format!("{}{}", &lower[..start], &lower[end..])
+    let without_col = format!("{}{}", &parts[hardware][..start], &parts[hardware][end..]);
+    parts[hardware] = &without_col;
+    // The collection's own number ends the instance ID; the rest is the parent's.
+    if let Some(instance) = parts.get_mut(hardware + 1)
+        && let Some(last) = instance.rfind('&')
+    {
+        *instance = &instance[..last];
+    }
+    parts.join("#")
 }
 
 enum Inbound {
@@ -254,8 +266,11 @@ mod tests {
     fn groups_windows_collections() {
         let short = r"\\?\HID#VID_046D&PID_C548&MI_02&Col01#8&2b1c&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}";
         let long = r"\\?\HID#VID_046D&PID_C548&MI_02&Col02#8&2b1c&0&0001#{4d1e55b2-f16f-11cf-88cb-001111000030}";
-        assert_eq!(endpoint_key(short).replace("0000#", "0001#"), endpoint_key(long));
+        assert_eq!(endpoint_key(short), endpoint_key(long));
         assert!(!endpoint_key(short).contains("&col"));
+        // A second receiver of the same kind has a different parent instance.
+        let other = r"\\?\HID#VID_046D&PID_C548&MI_02&Col01#8&9f3e&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}";
+        assert_ne!(endpoint_key(short), endpoint_key(other));
     }
 
     #[test]

@@ -510,10 +510,14 @@ impl DeviceState {
         };
         // Buttons first: they're what someone presses the moment a device comes
         // back, and a press arriving while the rest is set up is kept for later.
-        match divert_buttons(session, device, &mut self.controls, &profile.buttons) {
-            Ok(diverted) => self.diverted = diverted,
-            Err(error) => setting(Err(error), name, "buttons")?,
-        }
+        let diverting = divert_buttons(
+            session,
+            device,
+            &mut self.controls,
+            &profile.buttons,
+            &mut self.diverted,
+        );
+        setting(diverting, name, "buttons")?;
         // Gesture counts are DPI, so the deadzone is scaled to what the pointer
         // is actually set to. Asking costs one request, and nothing at all on a
         // device whose resolution isn't adjustable.
@@ -707,13 +711,23 @@ fn apply_dpi<L: Link>(session: &mut Session<L>, device: &Device, wanted: u16) ->
 /// The resolution after the current one in `values`, starting over at the end.
 /// The config guarantees `values` isn't empty.
 fn next_dpi<L: Link>(session: &mut Session<L>, device: &Device, values: &[u16]) -> hidpp::Result<u16> {
-    let current = dpi::read(session, device)?.current;
-    let next = values
-        .iter()
-        .position(|&value| value == current)
-        .map_or(0, |i| (i + 1) % values.len());
+    let current = dpi::read(session, device)?;
+    let next = next_in_cycle(values, current.current, |value| {
+        current.choices.nearest(value).unwrap_or(value)
+    });
     log::info!("{}: DPI {}", device.name(), values[next]);
     Ok(values[next])
+}
+
+/// Index of the value after `current` in `values`, or the first. A value the
+/// device can't give exactly is set as the nearest it can, so `current` is
+/// looked for among what each value `settles` to. The last match is taken, so
+/// values that settle alike don't keep cycling back to one another.
+fn next_in_cycle(values: &[u16], current: u16, settles: impl Fn(u16) -> u16) -> usize {
+    values
+        .iter()
+        .rposition(|&value| settles(value) == current)
+        .map_or(0, |i| (i + 1) % values.len())
 }
 
 fn apply_smartshift<L: Link>(
@@ -794,21 +808,23 @@ fn default_thumb_step(info: ThumbInfo) -> u16 {
 }
 
 /// Diverts the profile's buttons, listing the device's controls first if
-/// `controls` doesn't hold them yet.
+/// `controls` doesn't hold them yet. Each one diverted goes into `diverted` as
+/// it's done, so the ones before a failure are still handed back on exit. A
+/// button the device refuses is skipped; one that times out stops the rest.
 fn divert_buttons<L: Link>(
     session: &mut Session<L>,
     device: &Device,
     controls: &mut Option<Vec<Control>>,
     buttons: &BTreeMap<ButtonId, ButtonConfig>,
-) -> hidpp::Result<Vec<Control>> {
+    diverted: &mut Vec<Control>,
+) -> hidpp::Result<()> {
     if buttons.is_empty() {
-        return Ok(Vec::new());
+        return Ok(());
     }
     if controls.is_none() {
         *controls = Some(reprog::controls(session, device)?);
     }
     let controls = controls.as_deref().unwrap_or_default();
-    let mut diverted = Vec::new();
     for (id, binding) in buttons {
         let Some(control) = controls.iter().find(|control| control.cid == id.0) else {
             log::warn!("{}: has no `{id}` button (see `quietmouse info`)", device.name());
@@ -825,10 +841,12 @@ fn divert_buttons<L: Link>(
                 device.name()
             );
         }
-        reprog::set_reporting(session, device, control, Reporting { diverted: true, raw_xy })?;
-        diverted.push(*control);
+        match reprog::set_reporting(session, device, control, Reporting { diverted: true, raw_xy }) {
+            Ok(()) => diverted.push(*control),
+            Err(error) => setting(Err(error), device.name(), &format!("the `{id}` button"))?,
+        }
     }
-    Ok(diverted)
+    Ok(())
 }
 
 fn spawn_shell(command: &str) {
@@ -871,6 +889,18 @@ mod tests {
             diverted_resolution: 0,
         };
         assert_eq!(default_thumb_step(odd), 1);
+    }
+
+    #[test]
+    fn dpi_cycles_past_values_the_device_rounds() {
+        let steps_of_50 = |value: u16| (value + 25) / 50 * 50;
+        // 1234 is set as 1250, which must still count as being at 1234.
+        assert_eq!(next_in_cycle(&[1234, 2000], 1250, steps_of_50), 1);
+        assert_eq!(next_in_cycle(&[1234, 2000], 2000, steps_of_50), 0);
+        // Two values that both land on 1250 move on to the next distinct one.
+        assert_eq!(next_in_cycle(&[1234, 1240, 2000], 1250, steps_of_50), 2);
+        // Somewhere not in the cycle starts it from the top.
+        assert_eq!(next_in_cycle(&[800, 1600], 1000, steps_of_50), 0);
     }
 
     #[test]

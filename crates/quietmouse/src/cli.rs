@@ -259,32 +259,41 @@ pub fn events(wanted: Option<&str>, divert: &[String]) -> anyhow::Result<()> {
         reprog::controls(session, device)?
     };
     let mut diverted = Vec::new();
-    for id in &ids {
-        let control = controls
-            .iter()
-            .find(|control| control.cid == id.0 && control.divertable())
-            .with_context(|| format!("{} has no remappable `{id}` control", device.name()))?;
-        let reporting = Reporting {
-            diverted: true,
-            raw_xy: control.supports_raw_xy(),
-        };
-        reprog::set_reporting(session, device, control, reporting)?;
-        diverted.push(*control);
-    }
-    let thumb_before = if thumb {
-        let before = wheel::thumb_reporting(session, device)?;
-        wheel::set_thumb_reporting(
-            session,
-            device,
-            ThumbReporting {
+    let mut thumb_before = None;
+    let diverting = (|| -> anyhow::Result<()> {
+        for id in &ids {
+            let control = controls
+                .iter()
+                .find(|control| control.cid == id.0 && control.divertable())
+                .with_context(|| format!("{} has no remappable `{id}` control", device.name()))?;
+            let reporting = Reporting {
                 diverted: true,
-                ..before
-            },
-        )?;
-        Some(before)
-    } else {
-        None
-    };
+                raw_xy: control.supports_raw_xy(),
+            };
+            reprog::set_reporting(session, device, control, reporting)?;
+            diverted.push(*control);
+        }
+        if thumb {
+            let before = wheel::thumb_reporting(session, device)?;
+            wheel::set_thumb_reporting(
+                session,
+                device,
+                ThumbReporting {
+                    diverted: true,
+                    ..before
+                },
+            )?;
+            thumb_before = Some(before);
+        }
+        Ok(())
+    })();
+    if let Err(error) = diverting {
+        // Don't leave the controls diverted so far with nothing listening.
+        if let Err(restoring) = hand_back(session, device, &diverted, thumb_before) {
+            log::warn!("{}: couldn't hand every control back: {restoring}", device.name());
+        }
+        return Err(error);
+    }
 
     println!("Watching {}. Use the diverted controls; Ctrl+C to stop.", device.name());
     let ended = loop {
@@ -300,13 +309,25 @@ pub fn events(wanted: Option<&str>, divert: &[String]) -> anyhow::Result<()> {
     if ended != Error::Stopped {
         bail!("{}: {ended}", device.name());
     }
-    for control in &diverted {
+    hand_back(session, device, &diverted, thumb_before)?;
+    println!("Controls handed back to {}.", device.name());
+    Ok(())
+}
+
+/// Undoes what `events` diverted: `controls`, and the thumb wheel if it was
+/// diverted from `thumb_before`.
+fn hand_back(
+    session: &mut Session<HidLink>,
+    device: &Device,
+    controls: &[reprog::Control],
+    thumb_before: Option<ThumbReporting>,
+) -> hidpp::Result<()> {
+    for control in controls {
         reprog::set_reporting(session, device, control, Reporting::default())?;
     }
     if let Some(before) = thumb_before {
         wheel::set_thumb_reporting(session, device, before)?;
     }
-    println!("Controls handed back to {}.", device.name());
     Ok(())
 }
 
