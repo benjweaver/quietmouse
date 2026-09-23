@@ -132,9 +132,10 @@ cargo build --release
 
 Other commands: `quietmouse dpi 1600`, `quietmouse events --divert gesture,back`
 (prints what the device reports, which is useful for finding control IDs and tuning
-gestures), `quietmouse pair` and `quietmouse unpair <device>` (pair or remove a device
-on a Unifying, Lightspeed or Nano receiver; Bolt isn't supported yet), and `quietmouse config --check`. Add `-v` for detail, or `-vv` to see
-every HID++ report.
+gestures), `quietmouse pair` and `quietmouse unpair <device>` (pair or remove a
+device on a Bolt, Unifying, Lightspeed or Nano receiver), and
+`quietmouse config --check`. Add `-v` for detail, or `-vv` to see every HID++
+report.
 
 ## Permissions
 

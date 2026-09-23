@@ -23,7 +23,9 @@ const BACKLOG_LIMIT: usize = 256;
 /// HID++ 1.0 sub-ids for short register access.
 const SET_REGISTER: u8 = 0x80;
 const GET_REGISTER: u8 = 0x81;
-/// HID++ 1.0 sub-id for reading a long register: a short request, a long reply.
+/// HID++ 1.0 sub-ids for long registers: writes take a long report, reads
+/// are a short request with a long reply.
+const SET_LONG_REGISTER: u8 = 0x82;
 const GET_LONG_REGISTER: u8 = 0x83;
 
 /// One conversation with a HID++ endpoint (a receiver or a directly connected device).
@@ -122,6 +124,11 @@ impl<L: Link> Session<L> {
     /// Reads a HID++ 1.0 long register; `params` usually picks the sub-register.
     pub fn read_long_register(&mut self, device: u8, register: u8, params: &[u8]) -> Result<Report> {
         self.request(Report::short(device, GET_LONG_REGISTER, register, params))
+    }
+
+    /// Writes a HID++ 1.0 long register.
+    pub fn write_long_register(&mut self, device: u8, register: u8, params: &[u8]) -> Result<Report> {
+        self.request(Report::long(device, SET_LONG_REGISTER, register, params))
     }
 
     /// Rotates the software id through 1..=15 so a late reply to an abandoned

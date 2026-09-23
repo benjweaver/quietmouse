@@ -12,13 +12,14 @@ use hidpp::features::reprog::{self, Reporting};
 use hidpp::features::smartshift::{self, NEVER_DISENGAGE, SmartShift, WheelMode};
 use hidpp::features::wheel::{self, ThumbReporting};
 use hidpp::features::{self, battery, dpi, host};
-use hidpp::receiver::{self, Connection, Paired, Pairing};
+use hidpp::receiver::{self, Connection, Paired, Pairing, PairingError, PairingStep, Protocol};
 use hidpp::{Device, DeviceEvent, Error, Session};
 
 use crate::config::{ButtonId, Config, example};
 use crate::connect::{self, Role};
 use crate::daemon;
 use crate::hid::{self, Endpoint, HidLink};
+use crate::passkey::Prompt;
 
 /// Time allowed for a receiver to announce its paired devices.
 const ANNOUNCE_WAIT: Duration = Duration::from_millis(800);
@@ -309,7 +310,6 @@ pub fn events(wanted: Option<&str>, divert: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Opens a receiver's pairing lock and reports what paired.
 /// Receivers whose kind or product id contains `wanted`, or all of them.
 fn receivers<'a>(found: &'a mut [Found], wanted: Option<&str>) -> anyhow::Result<Vec<&'a mut Found>> {
     let wanted_lower = wanted.map(str::to_lowercase);
@@ -335,18 +335,7 @@ fn receiver_name(found: &Found) -> &'static str {
     found.endpoint.receiver_kind().unwrap_or("Receiver")
 }
 
-/// Stops with a message if the receiver can't be paired or unpaired here.
-fn check_pairing_lock(found: &Found) -> anyhow::Result<()> {
-    if !receiver::uses_pairing_lock(found.endpoint.product_id) {
-        bail!(
-            "{}s pair with a passkey, which quietmouse can't do yet",
-            receiver_name(found)
-        );
-    }
-    Ok(())
-}
-
-/// Opens a receiver's pairing lock and reports what paired.
+/// Pairs a device with a receiver and reports what paired.
 pub fn pair(wanted: Option<&str>, seconds: u8) -> anyhow::Result<()> {
     let mut found = scan(daemon::stop_signal()?)?;
     let mut receivers = receivers(&mut found, wanted)?;
@@ -361,19 +350,46 @@ pub fn pair(wanted: Option<&str>, seconds: u8) -> anyhow::Result<()> {
         );
     }
     let target = receivers.remove(0);
-    check_pairing_lock(target)?;
     let kind = receiver_name(target);
+    let protocol = Protocol::of(target.endpoint.product_id);
     let session = &mut target.session;
 
-    println!(
-        "{kind} is listening for {seconds} seconds. Turn the device off and on again, \
-         or press its connect button. Ctrl+C to stop."
-    );
-    let outcome = match receiver::pair(session, seconds) {
+    match protocol {
+        Protocol::Bolt => println!(
+            "{kind} is looking for devices for {seconds} seconds. Hold the device's connect \
+             or Easy-Switch button until its light blinks quickly. Ctrl+C to stop."
+        ),
+        Protocol::Unifying => println!(
+            "{kind} is listening for {seconds} seconds. Turn the device off and on again, \
+             or press its connect button. Ctrl+C to stop."
+        ),
+    }
+    let mut prompt: Option<Prompt> = None;
+    let outcome = receiver::pair(session, protocol, seconds, |step| match step {
+        PairingStep::Passkey(passkey) => {
+            let mut shown = Prompt::new(&passkey);
+            shown.show();
+            prompt = Some(shown);
+        }
+        PairingStep::Entered(entered) => {
+            if let Some(prompt) = &mut prompt {
+                prompt.update(entered);
+            }
+        }
+        PairingStep::Submitted => {
+            if let Some(prompt) = &mut prompt {
+                prompt.submitted();
+            }
+        }
+    });
+    if let Some(prompt) = &mut prompt {
+        prompt.close();
+    }
+    let outcome = match outcome {
         Ok(outcome) => outcome,
         Err(error) => {
             // Stopped, timed out or failed part way: don't leave the receiver listening.
-            let _ = receiver::close_pairing_lock(session);
+            receiver::cancel_pairing(session, protocol);
             if error == Error::Stopped {
                 println!("Stopped; the receiver is no longer listening.");
                 return Ok(());
@@ -386,18 +402,26 @@ pub fn pair(wanted: Option<&str>, seconds: u8) -> anyhow::Result<()> {
             let name = match Device::open(session, connection.index) {
                 Ok(device) => device.name().to_owned(),
                 // Not answering yet: fall back to the name it gave the receiver.
-                Err(_) => receiver::paired(session)
-                    .ok()
-                    .and_then(|paired| paired.into_iter().find(|p| p.index == connection.index))
-                    .and_then(|p| p.name)
-                    .unwrap_or_else(|| format!("device {:#06x}", connection.wireless_pid)),
+                Err(_) => pairing_records(&target.endpoint, session)
+                    .into_iter()
+                    .find(|p| p.index == connection.index)
+                    .map_or_else(|| format!("device #{}", connection.index), |p| record_name(&p)),
             };
             println!("Paired {name} as #{}.", connection.index);
             Ok(())
         }
+        Paired::Failed(PairingError::Failed) if let Some(prompt) = &prompt => bail!("{}", prompt.rejection_hint()),
         Paired::Failed(error) => bail!("nothing paired: {error}"),
         Paired::Nothing => bail!("nothing paired before the receiver stopped listening"),
     }
+}
+
+/// The receiver's pairing records, or none if it doesn't keep them.
+fn pairing_records(endpoint: &Endpoint, session: &mut Session<HidLink>) -> Vec<Pairing> {
+    receiver::paired(session, Protocol::of(endpoint.product_id)).unwrap_or_else(|error| {
+        log::debug!("{}: can't read its pairings: {error}", endpoint.describe());
+        Vec::new()
+    })
 }
 
 /// A slot on a receiver that holds a device.
@@ -409,18 +433,10 @@ struct Slot {
 /// Every slot on a receiver that holds a device, awake or not, in order.
 ///
 /// Sleeping devices are named from the receiver's pairing records where it keeps
-/// them. Otherwise, as on Bolt receivers and some Lightspeed ones, only their
-/// wireless product id is known, from the receiver's connection notices.
+/// them. Otherwise, as on some Lightspeed receivers, only their wireless product
+/// id is known, from the receiver's connection notices.
 fn receiver_slots(f: &mut Found) -> Vec<Slot> {
-    // Bolt receivers keep their records under other sub-registers, not read yet.
-    let records = if receiver::uses_pairing_lock(f.endpoint.product_id) {
-        receiver::paired(&mut f.session).unwrap_or_else(|error| {
-            log::debug!("{}: can't read its pairings: {error}", f.endpoint.describe());
-            Vec::new()
-        })
-    } else {
-        Vec::new()
-    };
+    let records = pairing_records(&f.endpoint, &mut f.session);
     let mut indices: Vec<u8> = records
         .iter()
         .map(|r| r.index)
@@ -545,7 +561,6 @@ pub fn unpair(wanted: &str, receiver_wanted: Option<&str>, yes: bool) -> anyhow:
 
     let label = describe(target);
     let f = &mut receivers[target.receiver];
-    check_pairing_lock(f)?;
     if !yes && let Some(path) = unconfigured(&target.name) {
         eprintln!(
             "warning: no [[device]] in {} matches {}, so quietmouse isn't setting it up. \
@@ -557,15 +572,14 @@ pub fn unpair(wanted: &str, receiver_wanted: Option<&str>, yes: bool) -> anyhow:
             bail!("left {label} paired");
         }
     }
-    match receiver::unpair(&mut f.session, target.index) {
+    match receiver::unpair(&mut f.session, Protocol::of(f.endpoint.product_id), target.index) {
         Ok(()) => {
             println!("Unpaired {label}. Pair it again with `quietmouse pair`.");
             Ok(())
         }
-        Err(Error::Hidpp10(_)) if f.endpoint.receiver_kind() != Some("Unifying receiver") => bail!(
-            "the {} refused to unpair {}; some Lightspeed and Nano receivers don't unpair, \
+        Err(Error::Hidpp10(_)) if f.endpoint.receiver_kind() == Some("Nano receiver") => bail!(
+            "the Nano receiver refused to unpair {}; Nano receivers don't unpair, \
              but pairing another device replaces it",
-            receiver_name(f),
             target.name
         ),
         Err(error) => bail!("couldn't unpair {label}: {error}"),

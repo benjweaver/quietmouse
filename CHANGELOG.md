@@ -9,25 +9,28 @@ from its section below.
 
 ### Added
 
-- `quietmouse pair` pairs a device with a Unifying, Lightspeed or Nano receiver:
-  it opens the receiver's pairing lock for 30 seconds (`--seconds` to change it)
-  and reports which device paired, or why none did. `--receiver` picks one when
-  several are plugged in. Bolt receivers pair with a passkey and aren't supported
-  yet.
-- `quietmouse unpair <device>` removes a device from a Unifying, Lightspeed or
-  Nano receiver, named by part of its name or by its slot number. Devices that
-  are asleep can be unpaired too, on receivers that keep pairing records. Asked
-  to unpair a Bluetooth device, it says where to remove it in the system's
-  Bluetooth settings, since the computer holds that pairing. Before unpairing a
-  device that no `[[device]]` in the config matches, such as a keyboard sharing
-  the receiver, it warns and asks; `--yes` skips the question.
+- `quietmouse pair` pairs a device with a receiver, and reports which device
+  paired or why none did. A Unifying, Lightspeed or Nano receiver listens for 30
+  seconds (`--seconds` to change it) for a device being switched on. A Bolt
+  receiver looks for a device in pairing mode and gives a passkey to enter on
+  it: typed on a keyboard, or clicked on a mouse as a sequence of left and right
+  clicks, laid out in numbered columns and ticked off as the device reports
+  each one. If the receiver rejects the passkey, it says how many clicks or
+  digits the device got. `--receiver` picks one when several are plugged in.
+- `quietmouse unpair <device>` removes a device from a receiver, named by part
+  of its name or by its slot number. Devices that are asleep can be unpaired
+  too, on receivers that keep pairing records. Asked to unpair a Bluetooth
+  device, it says where to remove it in the system's Bluetooth settings, since
+  the computer holds that pairing. Before unpairing a device that no
+  `[[device]]` in the config matches, such as a keyboard sharing the receiver,
+  it warns and asks; `--yes` skips the question.
 
 ### Changed
 
 - `quietmouse list` shows every device paired with a receiver, including ones
   that are asleep or connected elsewhere, such as over Bluetooth, where it used
   to show only the connected ones. Receivers that keep pairing records give their
-  names; Bolt receivers, for now, give only the wireless product id.
+  names.
 
 ## [0.1.24] - 2026-09-22
 

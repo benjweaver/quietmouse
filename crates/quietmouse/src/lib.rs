@@ -14,6 +14,7 @@ mod gesture;
 mod hid;
 mod inject;
 mod keys;
+mod passkey;
 mod permissions;
 mod service;
 mod worker;
@@ -63,17 +64,17 @@ enum Command {
         #[arg(long, value_delimiter = ',', default_value = "gesture")]
         divert: Vec<String>,
     },
-    /// Pair a device with a Unifying, Lightspeed or Nano receiver.
+    /// Pair a device with a Bolt, Unifying, Lightspeed or Nano receiver.
     Pair {
         /// Part of the receiver's kind or USB product id, e.g. `unifying` or `c52b`;
         /// needed only when more than one receiver is plugged in.
         #[arg(short, long)]
         receiver: Option<String>,
-        /// How long the receiver listens for the device.
+        /// How long the receiver looks for the device.
         #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u8).range(1..))]
         seconds: u8,
     },
-    /// Remove a device's pairing from a Unifying, Lightspeed or Nano receiver.
+    /// Remove a device's pairing from a receiver.
     Unpair {
         /// Part of the device's name, or its slot number as `quietmouse list` shows it.
         device: String,
