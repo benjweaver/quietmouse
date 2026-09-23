@@ -5,6 +5,19 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Fixed
+
+- quietmoused gets its icon in System Settings → Privacy & Security after an
+  upgrade, not a blank app icon. The icon comes from macOS's register of apps
+  at the moment the agent asks for its permissions, and a bundle Homebrew has
+  only just unpacked often isn't registered yet: with `autostart on` no longer
+  waiting on a failed first try, 0.1.22 asked in the same second it was
+  registered, and its entries stayed blank. `autostart on` now registers the
+  bundle before starting the agent. An entry already listed blank stays that
+  way until the next upgrade adds a new one.
+
 ## [0.1.22] - 2026-09-22
 
 ### Fixed

@@ -421,6 +421,9 @@ pub fn autostart(enable: bool) -> anyhow::Result<()> {
         launch_agent(&agent)
             .to_file_xml(&plist)
             .with_context(|| format!("can't write {}", plist.display()))?;
+        if let Some(bundle) = bundle_of(&agent) {
+            register(bundle);
+        }
         // Straight after an agent goes, launchd can still refuse the new one for a
         // moment with the same error, so that's retried too.
         let plist = plist.to_string_lossy();
@@ -442,6 +445,27 @@ pub fn autostart(enable: bool) -> anyhow::Result<()> {
         println!("quietmouse won't start when you log in");
     }
     Ok(())
+}
+
+/// The .app bundle `agent` runs from, if it runs from one.
+#[cfg(target_os = "macos")]
+fn bundle_of(agent: &Path) -> Option<&Path> {
+    agent
+        .ancestors()
+        .find(|dir| dir.extension().is_some_and(|extension| extension == "app"))
+}
+
+/// Tells LaunchServices about `bundle` before the agent in it first asks for its
+/// permissions. Privacy & Security takes an app's icon from LaunchServices when
+/// the agent asks, and a bundle Homebrew has only just unpacked is often not
+/// registered yet, so it would be listed under a blank app icon for good.
+#[cfg(target_os = "macos")]
+fn register(bundle: &Path) {
+    const LSREGISTER: &str =
+        "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+    if let Err(error) = run_tool(LSREGISTER, &["-f", &bundle.to_string_lossy()]) {
+        log::warn!("{error:#}; System Settings may list quietmouse without its icon");
+    }
 }
 
 /// Whether launchd still has `service` loaded.
@@ -603,6 +627,15 @@ mod tests {
         assert_eq!(agent.get("RunAtLoad").and_then(plist::Value::as_boolean), Some(true));
         let program = agent.get("ProgramArguments").and_then(plist::Value::as_array).unwrap();
         assert_eq!(program[0].as_string(), Some("/Users/ben/.local/bin/quietmoused"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn finds_the_bundle_an_agent_runs_from() {
+        let cellar = "/opt/homebrew/Cellar/quietmouse/0.1.23/bin/quietmoused.app";
+        let agent = format!("{cellar}/Contents/MacOS/quietmoused");
+        assert_eq!(bundle_of(Path::new(&agent)), Some(Path::new(cellar)));
+        assert_eq!(bundle_of(Path::new("/Users/ben/.local/bin/quietmoused")), None);
     }
 
     #[test]
