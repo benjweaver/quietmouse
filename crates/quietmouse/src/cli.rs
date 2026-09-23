@@ -12,7 +12,7 @@ use hidpp::features::reprog::{self, Reporting};
 use hidpp::features::smartshift::{self, NEVER_DISENGAGE, SmartShift, WheelMode};
 use hidpp::features::wheel::{self, ThumbReporting};
 use hidpp::features::{self, battery, dpi, host};
-use hidpp::receiver::{self, Paired, Pairing};
+use hidpp::receiver::{self, Connection, Paired, Pairing};
 use hidpp::{Device, DeviceEvent, Error, Session};
 
 use crate::config::{ButtonId, Config, example};
@@ -37,6 +37,8 @@ struct Found {
     receiver: bool,
     session: Session<HidLink>,
     devices: Vec<Device>,
+    /// Devices paired with a receiver that it says aren't connected.
+    asleep: Vec<Connection>,
 }
 
 fn scan(stop: Receiver<()>) -> anyhow::Result<Vec<Found>> {
@@ -51,15 +53,18 @@ fn scan(stop: Receiver<()>) -> anyhow::Result<Vec<Found>> {
             }
         };
         let mut session = Session::new(link);
-        let (receiver, indices) = match connect::probe(&mut session, &endpoint, hidpp::DEFAULT_TIMEOUT) {
+        let (receiver, indices, asleep) = match connect::probe(&mut session, &endpoint, hidpp::DEFAULT_TIMEOUT) {
             Ok(Role::Receiver) => match connect::receiver_devices(&mut session, ANNOUNCE_WAIT) {
-                Ok(indices) => (true, indices),
+                Ok(announced) => {
+                    let (online, asleep): (Vec<_>, Vec<_>) = announced.into_iter().partition(|c| c.online);
+                    (true, online.iter().map(|c| c.index).collect(), asleep)
+                }
                 Err(error) => {
                     log::warn!("{}: {error}", endpoint.describe());
-                    (true, Vec::new())
+                    (true, Vec::new(), Vec::new())
                 }
             },
-            Ok(Role::Direct(index)) => (false, vec![index]),
+            Ok(Role::Direct(index)) => (false, vec![index], Vec::new()),
             Ok(Role::Foreign | Role::Silent) => continue,
             Err(error) => {
                 log::warn!("{}: {error}", endpoint.describe());
@@ -78,6 +83,7 @@ fn scan(stop: Receiver<()>) -> anyhow::Result<Vec<Found>> {
             receiver,
             session,
             devices,
+            asleep,
         });
     }
     Ok(found)
@@ -115,47 +121,28 @@ pub fn list() -> anyhow::Result<()> {
     if found.is_empty() {
         println!("No Logitech HID++ devices found. {ACCESS_HINT}");
     }
-    for Found {
-        endpoint,
-        receiver,
-        session,
-        devices,
-    } in &mut found
-    {
-        if *receiver {
-            let kind = endpoint.receiver_kind().unwrap_or("Receiver");
-            println!("{kind} (USB, product {:#06x})", endpoint.product_id);
-            // Pairing records also cover devices that are asleep; some Lightspeed
-            // receivers don't keep them, and then only awake devices show.
-            let records = receiver::paired(session);
-            if let Err(error) = &records {
-                log::debug!("{}: can't read its pairings: {error}", endpoint.describe());
-            }
-            let records = records.unwrap_or_default();
-            let slots = slots(&records, devices);
+    for f in &mut found {
+        if f.receiver {
+            let kind = receiver_name(f);
+            println!("{kind} (USB, product {:#06x})", f.endpoint.product_id);
+            let slots = receiver_slots(f);
             if slots.is_empty() {
-                println!("  no paired devices are awake");
+                println!("  no paired devices");
             }
-            for index in slots {
-                match devices.iter().find(|device| device.index() == index) {
+            for slot in slots {
+                match f.devices.iter().find(|device| device.index() == slot.index) {
                     Some(device) => {
-                        let battery = describe_battery(battery::read(session, device).ok().flatten());
-                        println!("  #{index} {} — battery {battery}", device.name());
+                        let battery = describe_battery(battery::read(&mut f.session, device).ok().flatten());
+                        println!("  #{} {} — battery {battery}", slot.index, slot.name);
                     }
-                    None => {
-                        let name = records
-                            .iter()
-                            .find(|r| r.index == index)
-                            .map_or_else(String::new, record_name);
-                        println!("  #{index} {name} — asleep");
-                    }
+                    None => println!("  #{} {} — asleep or connected elsewhere", slot.index, slot.name),
                 }
             }
             continue;
         }
-        for device in devices.iter() {
-            let battery = describe_battery(battery::read(session, device).ok().flatten());
-            let via = if endpoint.bluetooth { "Bluetooth" } else { "USB" };
+        for device in &f.devices {
+            let battery = describe_battery(battery::read(&mut f.session, device).ok().flatten());
+            let via = if f.endpoint.bluetooth { "Bluetooth" } else { "USB" };
             println!("{} — {via} — battery {battery}", device.name());
         }
     }
@@ -413,13 +400,54 @@ pub fn pair(wanted: Option<&str>, seconds: u8) -> anyhow::Result<()> {
     }
 }
 
-/// Slots with a pairing record or an awake device, in order.
-fn slots(records: &[Pairing], awake: &[Device]) -> Vec<u8> {
-    let mut slots: Vec<u8> = records.iter().map(|r| r.index).collect();
-    slots.extend(awake.iter().map(Device::index));
-    slots.sort_unstable();
-    slots.dedup();
-    slots
+/// A slot on a receiver that holds a device.
+struct Slot {
+    index: u8,
+    name: String,
+}
+
+/// Every slot on a receiver that holds a device, awake or not, in order.
+///
+/// Sleeping devices are named from the receiver's pairing records where it keeps
+/// them. Otherwise, as on Bolt receivers and some Lightspeed ones, only their
+/// wireless product id is known, from the receiver's connection notices.
+fn receiver_slots(f: &mut Found) -> Vec<Slot> {
+    // Bolt receivers keep their records under other sub-registers, not read yet.
+    let records = if receiver::uses_pairing_lock(f.endpoint.product_id) {
+        receiver::paired(&mut f.session).unwrap_or_else(|error| {
+            log::debug!("{}: can't read its pairings: {error}", f.endpoint.describe());
+            Vec::new()
+        })
+    } else {
+        Vec::new()
+    };
+    let mut indices: Vec<u8> = records
+        .iter()
+        .map(|r| r.index)
+        .chain(f.devices.iter().map(Device::index))
+        .chain(f.asleep.iter().map(|c| c.index))
+        .collect();
+    indices.sort_unstable();
+    indices.dedup();
+    indices
+        .into_iter()
+        .map(|index| {
+            let name = f
+                .devices
+                .iter()
+                .find(|d| d.index() == index)
+                .map(|d| d.name().to_owned())
+                .or_else(|| records.iter().find(|r| r.index == index).map(record_name))
+                .or_else(|| {
+                    f.asleep
+                        .iter()
+                        .find(|c| c.index == index)
+                        .map(|c| format!("device {:#06x}", c.wireless_pid))
+                })
+                .unwrap_or_else(|| format!("device #{index}"));
+            Slot { index, name }
+        })
+        .collect()
 }
 
 /// The name a device gave the receiver when it paired, or its wireless product id.
@@ -471,24 +499,9 @@ pub fn unpair(wanted: &str, receiver_wanted: Option<&str>, yes: bool) -> anyhow:
         Err(error) => return Err(direct.map_or(error, not_on_a_receiver)),
     };
 
-    // Pairing records include devices that are asleep. Receivers without them
-    // (some Lightspeed ones) still list the devices that are awake.
     let mut devices = Vec::new();
     for (position, f) in receivers.iter_mut().enumerate() {
-        let records = receiver::paired(&mut f.session).unwrap_or_else(|error| {
-            log::warn!("{}: can't read its pairings: {error}", f.endpoint.describe());
-            Vec::new()
-        });
-        for index in slots(&records, &f.devices) {
-            let awake = f
-                .devices
-                .iter()
-                .find(|d| d.index() == index)
-                .map(|d| d.name().to_owned());
-            let record = records.iter().find(|r| r.index == index);
-            let name = awake
-                .or_else(|| record.map(record_name))
-                .unwrap_or_else(|| format!("device #{index}"));
+        for Slot { index, name } in receiver_slots(f) {
             devices.push(PairedDevice {
                 receiver: position,
                 index,

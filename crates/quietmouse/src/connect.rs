@@ -2,7 +2,8 @@
 
 use std::time::{Duration, Instant};
 
-use hidpp::{DIRECT, Device, Error, Link, Session, receiver};
+use hidpp::receiver::{self, Connection};
+use hidpp::{DIRECT, Device, Error, Link, Session};
 
 use crate::hid::Endpoint;
 
@@ -48,13 +49,14 @@ pub fn probe<L: Link>(session: &mut Session<L>, endpoint: &Endpoint, timeout: Du
     Ok(if answered { Role::Foreign } else { Role::Silent })
 }
 
-/// Indices of the devices online behind a receiver, gathered from the
-/// connection notices it sends within `wait` of being asked.
-pub fn receiver_devices<L: Link>(session: &mut Session<L>, wait: Duration) -> hidpp::Result<Vec<u8>> {
+/// What a receiver says of each device paired with it, from the connection
+/// notices it sends within `wait` of being asked: the latest one per slot, in
+/// slot order. Devices that are asleep, or connected elsewhere, come back offline.
+pub fn receiver_devices<L: Link>(session: &mut Session<L>, wait: Duration) -> hidpp::Result<Vec<Connection>> {
     receiver::enable_notifications(session)?;
     receiver::announce_devices(session)?;
     let deadline = Instant::now() + wait;
-    let mut online = Vec::new();
+    let mut announced: Vec<Connection> = Vec::new();
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
@@ -63,13 +65,11 @@ pub fn receiver_devices<L: Link>(session: &mut Session<L>, wait: Duration) -> hi
         let Some(report) = session.next_event(remaining)? else {
             break;
         };
-        if let Some(connection) = receiver::parse_connection(&report)
-            && connection.online
-            && !online.contains(&connection.index)
-        {
-            online.push(connection.index);
+        if let Some(connection) = receiver::parse_connection(&report) {
+            announced.retain(|earlier| earlier.index != connection.index);
+            announced.push(connection);
         }
     }
-    online.sort_unstable();
-    Ok(online)
+    announced.sort_unstable_by_key(|connection| connection.index);
+    Ok(announced)
 }

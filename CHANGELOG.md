@@ -24,8 +24,10 @@ from its section below.
 
 ### Changed
 
-- `quietmouse list` shows every device paired with a receiver, marking the ones
-  that are asleep, where it used to show only the awake ones.
+- `quietmouse list` shows every device paired with a receiver, including ones
+  that are asleep or connected elsewhere, such as over Bluetooth, where it used
+  to show only the connected ones. Receivers that keep pairing records give their
+  names; Bolt receivers, for now, give only the wireless product id.
 
 ## [0.1.24] - 2026-09-22
 
