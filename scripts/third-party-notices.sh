@@ -64,9 +64,9 @@ done
 cat <<'HEADER'
 # Third-party notices
 
-quietmouse itself is MIT-licensed; see LICENSE. The binaries it ships are
-statically linked, so they contain code from the crates listed here, and these
-are their licences.
+quietmouse itself is licensed under the GNU General Public License v3.0 or
+later; see LICENSE. The binaries it ships are statically linked, so they
+contain code from the crates listed here, and these are their licences.
 
 Where a crate offers a choice of licences, MIT is elected.
 

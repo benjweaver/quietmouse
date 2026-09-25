@@ -300,12 +300,17 @@ Planned: per-application profiles and a tray/menu-bar settings app.
 [Solaar](https://github.com/pwr-Solaar/Solaar) and
 [logiops](https://github.com/PixlOne/logiops) have documented Logitech's HID++
 behaviour over the years, and that work is what made this possible. quietmouse
-is an independent implementation and takes no code from either project, which is
-why it can be MIT-licensed while both of them are GPL.
+is an independent implementation and takes no code from either project.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Copyright © 2026 Ben Weaver.
+
+quietmouse is free software under the [GNU General Public License v3.0 or
+later](LICENSE): you can use, change and share it, but copies and modified
+versions must stay under the GPL, with their source available and this notice
+kept. Contributions are welcome under the terms in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 The binaries are statically linked, so they carry code from the crates
 quietmouse builds on. Every release archive and package ships

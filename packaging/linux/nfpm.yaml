@@ -13,7 +13,7 @@ description: |
   HID++ mice and receivers.
 vendor: quietmouse
 homepage: https://github.com/benjweaver/quietmouse
-license: MIT
+license: GPL-3.0-or-later
 
 contents:
   - src: ./pkgroot/quietmouse
