@@ -1,4 +1,5 @@
 # Shows a "Sponsor" button on the GitHub repo page, linking to optional
-# support payments. GitHub shows the URL as written, so this is a short link
-# on benjweaver.dev that redirects to the Stripe Payment Link.
-custom: ["benjweaver.dev/support/quietmouse"]
+# support payments: a short link on benjweaver.dev that redirects to the
+# Stripe Payment Link. Keep the https:// — without it GitHub treats the link
+# as a path inside this repo.
+custom: ["https://benjweaver.dev/support/quietmouse"]
