@@ -1,0 +1,3 @@
+# Shows a "Sponsor" button on the GitHub repo page, linking to optional
+# support payments (a Stripe Payment Link).
+custom: ["https://buy.stripe.com/dRm8wQepg3YddV67gT2ZO01"]
