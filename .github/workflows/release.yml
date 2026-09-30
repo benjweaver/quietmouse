@@ -220,3 +220,29 @@ jobs:
         run: >
           gh release create "$GITHUB_REF_NAME" dist/*
           --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file notes.md
+
+  tap:
+    # Points the Homebrew tap at this release. GITHUB_TOKEN can't push to another
+    # repository, so this checks the tap out with a deploy key that can write to it
+    # and nothing else (the TAP_DEPLOY_KEY secret). The push starts the tap's tests.
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: benjweaver/homebrew-quietmouse
+          ssh-key: ${{ secrets.TAP_DEPLOY_KEY }}
+      - name: Update the formula
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh scripts/update-formula.sh "$GITHUB_REF_NAME"
+      - name: Commit and push
+        run: |
+          if git diff --quiet; then
+            echo "The formula already points at $GITHUB_REF_NAME."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "quietmouse ${GITHUB_REF_NAME#v}"
+          git push
