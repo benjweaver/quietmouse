@@ -24,6 +24,8 @@
 	<string>11.0</string>
 	<key>LSBackgroundOnly</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Shell commands you bind to buttons can control other apps.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Ben Weaver</string>
 </dict>

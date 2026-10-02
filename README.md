@@ -94,9 +94,8 @@ Checksums are in `SHA256SUMS`.
   [Running at login](#running-at-login)). The files aren't code-signed, so SmartScreen
   may warn about an unrecognised app.
 - **macOS** (universal for Apple Silicon and Intel): unpack into a folder you own, such
-  as `~/.local/bin`, then run
-  `xattr -dr com.apple.quarantine quietmouse quietmoused quietmoused.app`. Nothing here
-  is signed or notarised, so Gatekeeper blocks it otherwise. `quietmoused` is a symlink
+  as `~/.local/bin`. Everything is signed with a Developer ID and notarised, so
+  Gatekeeper lets it run. `quietmoused` is a symlink
   into `quietmoused.app`, a minimal app bundle with no window and no Dock icon, so
   System Settings has a real icon for it under Privacy & Security instead of a
   generic one.
@@ -141,7 +140,7 @@ report.
 
 | OS | Needed |
 |----|--------|
-| macOS | **Input Monitoring**, to open the mouse, and **Accessibility**, to send keystrokes. Both are under System Settings → Privacy & Security. quietmouse asks for both when the agent starts, so macOS prompts and lists it there ready to switch on, and it restarts itself once you do. On macOS 27 it's listed once, under **Device Control and Data Access**, and switching it on there covers both. They're tied to the exact binary, so each version asks again: after `brew upgrade quietmouse`, run `quietmouse autostart on` and switch the new entries on when macOS asks. On your own Mac this is just the switches. If your account isn't an administrator, as on many managed work Macs, macOS needs an administrator or your organisation's device management to approve Accessibility, and by default Input Monitoring too. |
+| macOS | **Input Monitoring**, to open the mouse, and **Accessibility**, to send keystrokes. Both are under System Settings → Privacy & Security. quietmouse asks for both when the agent starts, so macOS prompts and lists it there ready to switch on, and it restarts itself once you do. On macOS 27 it's listed once, under **Device Control and Data Access**, and switching it on there covers both. Releases are signed with a Developer ID, so the switches carry over when you upgrade: after `brew upgrade quietmouse`, run `quietmouse autostart on` to start the new version. Upgrading from 0.1.28 or earlier asks once more. On your own Mac this is just the switches. If your account isn't an administrator, as on many managed work Macs, macOS needs an administrator or your organisation's device management to approve Accessibility, and by default Input Monitoring too. |
 | Linux | The packages and `install.sh` install [`packaging/linux/70-quietmouse.rules`](packaging/linux/70-quietmouse.rules) for you; otherwise copy it into `/etc/udev/rules.d` once, with sudo. It gives the logged-in user the Logitech hidraw devices and `/dev/uinput`, which the kernel otherwise keeps for root. Nothing else needs root, and if your distribution already ships Logitech udev rules (for example with Solaar) you may not need this step at all. Keystrokes go through uinput, so they work on X11 and Wayland. |
 | Windows | Nothing extra, and no admin rights. HID++ lives on a vendor-specific HID collection any user can open, and keystrokes go through `SendInput`. One Windows rule applies: a normal program can't send keys into windows running as administrator. |
 

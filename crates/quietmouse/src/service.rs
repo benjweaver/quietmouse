@@ -302,11 +302,10 @@ fn agent_path() -> anyhow::Result<PathBuf> {
 /// Resolves a package manager's shortcut (Homebrew's `bin/quietmoused`, which
 /// points into a versioned folder) to the real path.
 ///
-/// macOS and Linux want the resolved path. macOS ties its privacy permissions to
-/// the exact binary, and a shortcut that stays put across upgrades leaves a stale
-/// entry behind that silently matches nothing: no prompt, no permission, no clue
-/// why. A versioned path makes each upgrade a new entry that macOS asks about
-/// properly.
+/// macOS and Linux want the resolved path. On macOS it leads into quietmoused.app,
+/// which Privacy & Security lists and checks permissions against: by its bundle ID
+/// and Developer ID signature, which stay the same across versions, so the new
+/// path an upgrade brings keeps the permissions.
 #[cfg(not(target_os = "windows"))]
 fn resolve(agent: PathBuf) -> PathBuf {
     agent.canonicalize().unwrap_or(agent)
