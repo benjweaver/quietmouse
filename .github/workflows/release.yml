@@ -1,10 +1,12 @@
 name: Release
 
-# Builds quietmouse for every platform. Pushing a tag such as v0.1.0 publishes a
-# GitHub release with the archives, Linux packages and checksums, but only after
-# the Linux packages have installed cleanly on several distributions. Running the
-# workflow by hand (Actions → Release → Run workflow) only uploads everything as
-# build artifacts.
+# Builds quietmouse for every platform. Pushing a tag such as v0.1.0 creates a draft
+# GitHub release with the archives, Linux packages and checksums, but only after the
+# Linux packages have installed cleanly on several distributions. The draft waits for
+# scripts/sign-macos-release.sh, run on a Mac with the Developer ID, which signs and
+# notarises the macOS build and publishes the release; publishing points the
+# Homebrew tap at it (tap.yml). Running the workflow by hand (Actions → Release →
+# Run workflow) only uploads everything as build artifacts.
 on:
   push:
     tags: ["v*"]
@@ -40,11 +42,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      # Pinned to a commit, since this job goes on to handle the signing certificate.
-      # Pinned by hash, the action needs the toolchain named.
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           targets: ${{ matrix.targets }}
       - name: Install musl tools
         if: contains(matrix.targets, 'musl')
@@ -57,34 +56,11 @@ jobs:
           done
         env:
           TARGETS: ${{ matrix.targets }}
-      - name: Import the Developer ID certificate
-        if: runner.os == 'macOS'
-        env:
-          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-        run: |
-          set -euo pipefail
-          # Into a keychain of its own, gone with the runner, that codesign can use
-          # without asking.
-          keychain="$RUNNER_TEMP/signing.keychain-db"
-          password=$(openssl rand -base64 24)
-          security create-keychain -p "$password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$password" "$keychain"
-          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          rm "$RUNNER_TEMP/certificate.p12"
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" > /dev/null
-          # shellcheck disable=SC2046 # the existing keychains, one argument each
-          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
       - name: Package
         shell: bash
         env:
           NAME: ${{ matrix.name }}
           TARGETS: ${{ matrix.targets }}
-          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
-          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
-          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
           set -euo pipefail
           dir="quietmouse-${GITHUB_REF_NAME//\//-}-$NAME"
@@ -109,18 +85,13 @@ jobs:
               7z a "out/$dir.zip" "$inner" > /dev/null
               ;;
             macos-*)
-              # Signed with the Developer ID, with the hardened runtime and secure
-              # timestamp that notarization requires. macOS ties privacy permissions
-              # (Input Monitoring, Accessibility) to the signature, and every version
-              # carries the same Developer ID, so permissions survive upgrades.
-              sign() {
-                codesign --force --options runtime --timestamp \
-                  --sign "Developer ID Application: Ben Weaver (AR25V66TVY)" "$@"
-              }
+              # Signed ad-hoc here, so the build runs as it is. A release's copy is
+              # signed again with the Developer ID by scripts/sign-macos-release.sh.
               lipo -create -output "$dir/quietmouse" \
                 "target/aarch64-apple-darwin/release/quietmouse" "target/x86_64-apple-darwin/release/quietmouse"
-              # Sign the universal binary as a whole, so both slices carry the signature.
-              sign --identifier "io.github.benjweaver.quietmouse.quietmouse" "$dir/quietmouse"
+              # Only the arm64 slice comes out of the linker signed. Sign the universal
+              # binary as a whole so both slices carry a signature.
+              codesign --force --sign - --identifier "io.github.benjweaver.quietmouse.quietmouse" "$dir/quietmouse"
               codesign --verify --all-architectures --strict "$dir/quietmouse"
 
               # quietmoused's real binary goes inside a minimal .app bundle, with
@@ -140,33 +111,13 @@ jobs:
               version=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
               # One bundle ID for every version. macOS keys a bundle's privacy
               # permissions by its ID and checks them against the Developer ID that
-              # every version is signed with, so an upgrade keeps them.
+              # every release is signed with, so an upgrade keeps them.
               bundle_id="io.github.benjweaver.quietmouse.quietmoused"
               sed -e "s/__VERSION__/$version/g" -e "s/__BUNDLE_ID__/$bundle_id/g" \
                 packaging/macos/Info.plist > "$bundle/Contents/Info.plist"
-              # The entitlement lets shell commands bound to buttons (osascript, say)
-              # control other apps, which the hardened runtime otherwise blocks.
-              sign --identifier "$bundle_id" --entitlements packaging/macos/quietmoused.entitlements "$bundle"
+              codesign --force --sign - --identifier "$bundle_id" "$bundle"
               codesign --verify --all-architectures --strict "$bundle"
               ln -s quietmoused.app/Contents/MacOS/quietmoused "$dir/quietmoused"
-
-              # Notarize both in one submission, then staple the ticket to the bundle.
-              # A bare binary can't hold one, so Gatekeeper looks quietmouse's up online
-              # the first time, and only if the download was quarantined.
-              ditto -c -k --keepParent "$dir" "$RUNNER_TEMP/notarize.zip"
-              printf '%s' "$NOTARY_KEY" > "$RUNNER_TEMP/notary.p8"
-              notary=(--key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID")
-              # A team API key has an issuer; an individual one has none.
-              if [ -n "$NOTARY_ISSUER_ID" ]; then notary+=(--issuer "$NOTARY_ISSUER_ID"); fi
-              result=$(xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" "${notary[@]}" --wait --output-format json)
-              if [ "$(plutil -extract status raw -o - - <<< "$result")" != Accepted ]; then
-                echo "::error::notarization failed: $result"
-                xcrun notarytool log "$(plutil -extract id raw -o - - <<< "$result")" "${notary[@]}" || true
-                exit 1
-              fi
-              rm "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/notarize.zip"
-              xcrun stapler staple "$bundle"
-              spctl --assess --type execute "$bundle"
 
               tar -czf "out/$dir.tar.gz" "$dir"
               ;;
@@ -266,31 +217,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
-          gh release create "$GITHUB_REF_NAME" dist/*
+          gh release create "$GITHUB_REF_NAME" dist/* --draft
           --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file notes.md
-
-  tap:
-    # Points the Homebrew tap at this release. GITHUB_TOKEN can't push to another
-    # repository, so this checks the tap out with a deploy key that can write to it
-    # and nothing else (the TAP_DEPLOY_KEY secret). The push starts the tap's tests.
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: benjweaver/homebrew-quietmouse
-          ssh-key: ${{ secrets.TAP_DEPLOY_KEY }}
-      - name: Update the formula
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: sh scripts/update-formula.sh "$GITHUB_REF_NAME"
-      - name: Commit and push
-        run: |
-          if git diff --quiet; then
-            echo "The formula already points at $GITHUB_REF_NAME."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "quietmouse ${GITHUB_REF_NAME#v}"
-          git push
