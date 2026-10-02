@@ -5,6 +5,15 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [0.1.29] - 2026-10-02
+
+### Changed
+
+- The macOS release is signed with a Developer ID and notarised. Input
+  Monitoring and Accessibility now carry over when you upgrade, instead of
+  asking again for every version (the upgrade to this one asks a last time),
+  and a download no longer needs its quarantine flag cleared.
+
 ## [0.1.28] - 2026-09-25
 
 ### Changed
@@ -506,4 +515,5 @@ First release.
   key.
 - No network access, enforced in CI.
 
+[0.1.29]: https://github.com/benjweaver/quietmouse/compare/v0.1.28...v0.1.29
 [0.1.28]: https://github.com/benjweaver/quietmouse/releases/tag/v0.1.28
