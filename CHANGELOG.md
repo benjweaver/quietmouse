@@ -5,6 +5,19 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Changed
+
+- On macOS, Login Items in System Settings lists quietmouse by name, with its
+  icon, and its switch there turns it on and off. `autostart on` now registers
+  the LaunchAgent that the app bundle carries, as other apps do, instead of
+  writing one to `~/Library/LaunchAgents`, which macOS listed under the name on
+  the signing certificate. Run `quietmouse autostart on` once after upgrading;
+  it removes the old LaunchAgent.
+- The macOS bundle is now `quietmouse.app`, so Privacy & Security lists it as
+  quietmouse. Input Monitoring and Accessibility carry over.
+
 ## [0.1.29] - 2026-10-02
 
 ### Changed

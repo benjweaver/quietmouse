@@ -8,10 +8,11 @@ edition = "2024"
 license = "GPL-3.0-or-later"
 
 [workspace.lints.rust]
-# Denied rather than forbidden for four exceptions, all in crates/quietmouse/src:
+# Denied rather than forbidden for five exceptions, all in crates/quietmouse/src:
 # permissions.rs, which declares the macOS calls that ask for Input Monitoring and
 # Accessibility; the macOS and Windows files in hotplug/, which register for device
-# arrival and removal callbacks; and service/stop_event.rs, the Windows stop event.
+# arrival and removal callbacks; service/stop_event.rs, the Windows stop event; and
+# service/login_item.rs, which registers quietmouse.app's login item on macOS.
 unsafe_code = "deny"
 warnings = "deny"
 

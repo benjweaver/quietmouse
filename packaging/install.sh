@@ -37,7 +37,8 @@ uninstall_macos() {
         "$bin_dir/quietmouse" stop || true
     fi
     rm -f "$bin_dir/quietmouse" "$bin_dir/quietmoused"
-    rm -rf "$bin_dir/quietmoused.app"
+    # quietmoused.app is the bundle's name before 0.1.30.
+    rm -rf "$bin_dir/quietmouse.app" "$bin_dir/quietmoused.app"
     echo "quietmouse is removed. Your config in ~/Library/Application Support/quietmouse is still there."
 }
 
@@ -57,12 +58,13 @@ install_macos() {
     # a symlink into it. ditto, not cp, so the bundle's code signature and resource
     # fork survive the copy intact; cp -P for the symlink so it's copied as a link,
     # not followed and expanded into a second copy of the binary.
-    rm -rf "$bin_dir/quietmoused.app"
-    ditto "$dir/quietmoused.app" "$bin_dir/quietmoused.app"
+    # The bundle was called quietmoused.app before 0.1.30.
+    rm -rf "$bin_dir/quietmouse.app" "$bin_dir/quietmoused.app"
+    ditto "$dir/quietmouse.app" "$bin_dir/quietmouse.app"
     cp -P "$dir/quietmoused" "$bin_dir/quietmoused"
     # curl doesn't quarantine what it downloads, but a copy replaced here might
     # have come from a browser, and Gatekeeper would block that one.
-    xattr -dr com.apple.quarantine "$bin_dir/quietmouse" "$bin_dir/quietmoused" "$bin_dir/quietmoused.app" 2> /dev/null || true
+    xattr -dr com.apple.quarantine "$bin_dir/quietmouse" "$bin_dir/quietmoused" "$bin_dir/quietmouse.app" 2> /dev/null || true
     echo "Installed quietmouse and quietmoused in $bin_dir"
 
     config=$("$bin_dir/quietmouse" config 2> /dev/null)

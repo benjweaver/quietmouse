@@ -96,9 +96,9 @@ Checksums are in `SHA256SUMS`.
 - **macOS** (universal for Apple Silicon and Intel): unpack into a folder you own, such
   as `~/.local/bin`. Everything is signed with a Developer ID and notarised, so
   Gatekeeper lets it run. `quietmoused` is a symlink
-  into `quietmoused.app`, a minimal app bundle with no window and no Dock icon, so
-  System Settings has a real icon for it under Privacy & Security instead of a
-  generic one.
+  into `quietmouse.app`, a minimal app bundle with no window and no Dock icon, so
+  System Settings lists it by name, with its icon, under Privacy & Security and
+  Login Items.
 - **Linux** (x86_64): pick the file for your distribution. Each package installs the
   programs and the udev rule that lets your user open Logitech devices, and loads
   `uinput` at boot. The binaries are statically linked, so they don't depend on your
@@ -208,10 +208,12 @@ quietmouse autostart on     # start now, and whenever you log in
 `quietmouse.log` in `~/Library/Application Support/quietmouse`,
 `~/.local/share/quietmouse` or `%LOCALAPPDATA%\quietmouse` only when something goes
 wrong, so no file at all is the healthy state. To watch it working, stop it and run
-`quietmouse run -v`, which prints every device, swipe and action as it happens. `autostart on` registers it for your account only: a
-LaunchAgent in `~/Library/LaunchAgents` on macOS, a systemd user service on Linux, or
-a `quietmouse` shortcut in your Startup folder on Windows, which Task Manager's Startup
-apps lists and can switch off. `quietmouse autostart off` removes it.
+`quietmouse run -v`, which prints every device, swipe and action as it happens. `autostart on` registers it for your account only: on macOS the
+LaunchAgent inside `quietmouse.app`, which System Settings > General > Login Items
+lists as quietmouse and can switch off; a systemd user service on Linux; or a
+`quietmouse` shortcut in your Startup folder on Windows, which Task Manager's Startup
+apps lists and can switch off. `quietmouse autostart off` removes it. On macOS, run
+`quietmouse autostart on` again after an upgrade so it starts the new version.
 
 `quietmouse start` and `quietmouse stop` start and stop the agent by hand. Only one
 instance runs at a time. Stopping, whether by `quietmouse stop`, Ctrl+C or SIGTERM,

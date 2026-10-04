@@ -161,6 +161,15 @@ pub fn cli_main() -> ExitCode {
 
 /// Entry point of `quietmoused`: the daemon with the default config, logging to a file.
 pub fn agent_main() -> ExitCode {
+    // `quietmouse autostart` asks quietmoused to register its login item, which
+    // only a process inside quietmouse.app can do.
+    #[cfg(target_os = "macos")]
+    if let Some(code) = std::env::args()
+        .nth(1)
+        .and_then(|argument| service::login_item::handle(&argument))
+    {
+        return code;
+    }
     // Without a console there's nowhere to report not finding anywhere to log.
     let Ok(log) = service::open_log() else {
         return ExitCode::FAILURE;

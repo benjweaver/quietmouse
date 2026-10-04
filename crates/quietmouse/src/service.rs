@@ -2,6 +2,8 @@
 //! one running instance at a time, a stop request any process can make, a log
 //! file for the windowless agent, and starting at log-in on every platform.
 
+#[cfg(target_os = "macos")]
+pub mod login_item;
 #[cfg(target_os = "windows")]
 mod stop_event;
 
@@ -18,7 +20,7 @@ use crate::config::Config;
 
 #[cfg(target_os = "windows")]
 const AGENT: &str = "quietmoused.exe";
-// On macOS this is a symlink into quietmoused.app/Contents/MacOS/quietmoused, not the
+// On macOS this is a symlink into quietmouse.app/Contents/MacOS/quietmoused, not the
 // binary itself. It has to stay a plain sibling file, not a nested path: Homebrew's
 // `brew link` only symlinks individual files out of a keg's bin into the shared bin
 // it puts on PATH, silently skipping whole directories, so a bundle sitting directly
@@ -302,7 +304,7 @@ fn agent_path() -> anyhow::Result<PathBuf> {
 /// Resolves a package manager's shortcut (Homebrew's `bin/quietmoused`, which
 /// points into a versioned folder) to the real path.
 ///
-/// macOS and Linux want the resolved path. On macOS it leads into quietmoused.app,
+/// macOS and Linux want the resolved path. On macOS it leads into quietmouse.app,
 /// which Privacy & Security lists and checks permissions against: by its bundle ID
 /// and Developer ID signature, which stay the same across versions, so the new
 /// path an upgrade brings keeps the permissions.
@@ -438,38 +440,44 @@ fn clear_startup_switch(list: &str, name: &str) -> anyhow::Result<()> {
         .context("can't reset quietmouse's startup switch")
 }
 
-/// Label of the per-user LaunchAgent.
+/// Label of the LaunchAgent in `~/Library/LaunchAgents`, for a quietmoused that
+/// runs without its bundle. 0.1.29 and earlier started this way too.
 #[cfg(target_os = "macos")]
 const LAUNCH_AGENT: &str = "local.quietmouse";
 
-/// Installs or removes a LaunchAgent in `~/Library/LaunchAgents`, which needs no
-/// admin rights, and loads it into this user's session straight away.
+/// Starts quietmouse at log-in, or stops doing so, and starts or stops it now.
+///
+/// quietmouse.app carries its own LaunchAgent, which quietmoused registers with
+/// ServiceManagement ([`login_item`]); Login Items then lists it as quietmouse.
+/// A quietmoused without its bundle, as `cargo build` leaves it, gets a plist in
+/// `~/Library/LaunchAgents` instead. Neither needs admin rights.
 #[cfg(target_os = "macos")]
 pub fn autostart(enable: bool) -> anyhow::Result<()> {
-    let home = dirs::home_dir().context("can't find your home folder")?;
-    let plist = home.join("Library/LaunchAgents").join(format!("{LAUNCH_AGENT}.plist"));
     let domain = format!("gui/{}", current_uid()?);
-    let service = format!("{domain}/{LAUNCH_AGENT}");
-    // Unload any earlier copy first; this fails harmlessly when none is loaded.
-    if let Err(error) = run_tool("launchctl", &["bootout", &service]) {
-        log::debug!("{error:#}");
+    // Whichever way it's set up now, only one way stays: the plist from an older
+    // version would otherwise start a second agent next to the login item.
+    let plist = dirs::home_dir()
+        .context("can't find your home folder")?
+        .join("Library/LaunchAgents")
+        .join(format!("{LAUNCH_AGENT}.plist"));
+    unload(&domain, LAUNCH_AGENT)?;
+    if plist.exists() {
+        fs::remove_file(&plist).with_context(|| format!("can't remove {}", plist.display()))?;
     }
-    // bootout returns as soon as it has asked the agent to stop, while the agent
-    // is still handing buttons back to the mouse. launchd keeps it listed until
-    // its process has exited, and loading the new agent before then fails with
-    // "Bootstrap failed: 5"; worse, a new agent that did start would find the
-    // old one still holding the instance lock and quietly exit.
-    let deadline = Instant::now() + STOP_WAIT;
-    while loaded(&service)? {
-        ensure!(
-            Instant::now() < deadline,
-            "the old quietmouse was still running {} seconds after being asked to stop",
-            STOP_WAIT.as_secs()
-        );
-        thread::sleep(STOP_POLL);
-    }
-    if enable {
-        let agent = agent_path()?;
+    let agent = agent_path()?;
+    if has_login_item(&agent) {
+        // Unregistering first also replaces the agent an upgrade left running from
+        // the old version's folder, which Homebrew has since deleted.
+        run_login_item(&agent, login_item::UNREGISTER)?;
+        unload(&domain, login_item::LABEL)?;
+        if enable && run_login_item(&agent, login_item::REGISTER)? == Approval::Needed {
+            println!(
+                "quietmouse is set to start when you log in, but its switch in System Settings > \
+                 General > Login Items is off. Switch it on to start it."
+            );
+            return Ok(());
+        }
+    } else if enable {
         if let Some(dir) = plist.parent() {
             fs::create_dir_all(dir).with_context(|| format!("can't create {}", dir.display()))?;
         }
@@ -477,7 +485,8 @@ pub fn autostart(enable: bool) -> anyhow::Result<()> {
             .to_file_xml(&plist)
             .with_context(|| format!("can't write {}", plist.display()))?;
         // Straight after an agent goes, launchd can still refuse the new one for a
-        // moment with the same error, so that's retried too.
+        // moment with "Bootstrap failed: 5", so that's retried.
+        let deadline = Instant::now() + STOP_WAIT;
         let plist = plist.to_string_lossy();
         while let Err(error) = run_tool("launchctl", &["bootstrap", &domain, &plist]) {
             if Instant::now() >= deadline {
@@ -486,15 +495,73 @@ pub fn autostart(enable: bool) -> anyhow::Result<()> {
             log::debug!("{error:#}");
             thread::sleep(STOP_POLL);
         }
+    }
+    if enable {
         println!(
             "quietmouse is starting now and will start whenever you log in ({})",
             agent.display()
         );
     } else {
-        if plist.exists() {
-            fs::remove_file(&plist).with_context(|| format!("can't remove {}", plist.display()))?;
-        }
         println!("quietmouse won't start when you log in");
+    }
+    Ok(())
+}
+
+/// Whether `agent` sits in quietmouse.app, which carries the login item's plist.
+#[cfg(target_os = "macos")]
+fn has_login_item(agent: &Path) -> bool {
+    agent.parent().and_then(Path::parent).is_some_and(|contents| {
+        contents
+            .join(format!("Library/LaunchAgents/{}.plist", login_item::LABEL))
+            .is_file()
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[derive(PartialEq)]
+enum Approval {
+    Given,
+    Needed,
+}
+
+/// Runs quietmoused with a [`login_item`] request: the registration has to come
+/// from inside the bundle.
+#[cfg(target_os = "macos")]
+fn run_login_item(agent: &Path, request: &str) -> anyhow::Result<Approval> {
+    let output = Command::new(agent)
+        .arg(request)
+        .stdin(Stdio::null())
+        .output()
+        .with_context(|| format!("can't run {}", agent.display()))?;
+    match output.status.code() {
+        Some(0) => Ok(Approval::Given),
+        Some(code) if code == i32::from(login_item::NEEDS_APPROVAL) => Ok(Approval::Needed),
+        _ => bail!("{}", String::from_utf8_lossy(&output.stderr).trim()),
+    }
+}
+
+/// Unloads a LaunchAgent if launchd has it, and waits until it has gone.
+///
+/// bootout returns as soon as it has asked the agent to stop, while the agent
+/// is still handing buttons back to the mouse. launchd keeps it listed until
+/// its process has exited, and loading a new agent before then fails with
+/// "Bootstrap failed: 5"; worse, a new agent that did start would find the old
+/// one still holding the instance lock and quietly exit.
+#[cfg(target_os = "macos")]
+fn unload(domain: &str, label: &str) -> anyhow::Result<()> {
+    let service = format!("{domain}/{label}");
+    // This fails harmlessly when nothing is loaded.
+    if let Err(error) = run_tool("launchctl", &["bootout", &service]) {
+        log::debug!("{error:#}");
+    }
+    let deadline = Instant::now() + STOP_WAIT;
+    while loaded(&service)? {
+        ensure!(
+            Instant::now() < deadline,
+            "the old quietmouse was still running {} seconds after being asked to stop",
+            STOP_WAIT.as_secs()
+        );
+        thread::sleep(STOP_POLL);
     }
     Ok(())
 }
@@ -678,6 +745,43 @@ mod tests {
         assert_eq!(agent.get("RunAtLoad").and_then(plist::Value::as_boolean), Some(true));
         let program = agent.get("ProgramArguments").and_then(plist::Value::as_array).unwrap();
         assert_eq!(program[0].as_string(), Some("/Users/ben/.local/bin/quietmoused"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_bundled_login_item_starts_quietmoused() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../packaging/macos/io.github.benjweaver.quietmouse.plist"
+        );
+        let parsed = plist::Value::from_file(path).unwrap();
+        let agent = parsed.as_dictionary().unwrap();
+        assert_eq!(
+            agent.get("Label").and_then(plist::Value::as_string),
+            Some(login_item::LABEL)
+        );
+        assert_eq!(
+            agent.get("BundleProgram").and_then(plist::Value::as_string),
+            Some(format!("Contents/MacOS/{AGENT}").as_str())
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn only_quietmoused_in_its_bundle_has_a_login_item() {
+        let bare = scratch("bare").join(AGENT);
+        File::create(&bare).unwrap();
+        assert!(!has_login_item(&bare));
+
+        let contents = scratch("bundle").join("quietmouse.app/Contents");
+        let agents = contents.join("Library/LaunchAgents");
+        fs::create_dir_all(contents.join("MacOS")).unwrap();
+        fs::create_dir_all(&agents).unwrap();
+        let bundled = contents.join("MacOS").join(AGENT);
+        File::create(&bundled).unwrap();
+        assert!(!has_login_item(&bundled));
+        File::create(agents.join(format!("{}.plist", login_item::LABEL))).unwrap();
+        assert!(has_login_item(&bundled));
     }
 
     #[test]

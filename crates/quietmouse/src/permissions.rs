@@ -45,7 +45,7 @@ pub fn request() -> Permissions {
 /// The three system calls behind [`request`]. They take and return plain
 /// integers, with no pointers and nothing to free. The workspace denies
 /// `unsafe_code` apart from this module, the macOS and Windows device watchers
-/// in `hotplug`, and the Windows stop event in `service`.
+/// in `hotplug`, and the Windows stop event and macOS login item in `service`.
 #[cfg(target_os = "macos")]
 #[allow(
     unsafe_code,

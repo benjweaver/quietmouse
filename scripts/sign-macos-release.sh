@@ -2,7 +2,7 @@
 # Signs and notarises the macOS build of a draft release, then publishes it.
 #
 # A pushed tag makes the release workflow build everything and leave the release as
-# a draft. This takes its macOS archive, signs quietmouse and quietmoused.app with the
+# a draft. This takes its macOS archive, signs quietmouse and quietmouse.app with the
 # Developer ID in this Mac's keychain, has Apple notarise them, staples the ticket to
 # the bundle, and swaps the signed archive and its checksum into the release.
 # Publishing the release then points the Homebrew tap at it (.github/workflows/tap.yml).
@@ -39,7 +39,7 @@ trap 'rm -rf "$work"' EXIT
 gh release download "$tag" --repo "$repo" --dir "$work" --pattern "$name.tar.gz" --pattern SHA256SUMS
 tar -xzf "$work/$name.tar.gz" -C "$work"
 dir="$work/$name"
-bundle="$dir/quietmoused.app"
+bundle="$dir/quietmouse.app"
 
 # The hardened runtime and a secure timestamp are what notarisation requires. The
 # bundle keeps the ID it was built with. Its entitlement lets shell commands bound to

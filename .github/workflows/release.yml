@@ -103,8 +103,12 @@ jobs:
               # of a keg's bin, silently skipping whole directories, so a bundle
               # wouldn't reach the shared bin it puts on PATH. service.rs resolves the
               # symlink to start the exact binary inside the bundle.
-              bundle="$dir/quietmoused.app"
-              mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
+              #
+              # The bundle also carries the LaunchAgent that `quietmouse autostart`
+              # registers through ServiceManagement, so Login Items lists the agent
+              # under quietmouse, with its icon, rather than the certificate's name.
+              bundle="$dir/quietmouse.app"
+              mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources" "$bundle/Contents/Library/LaunchAgents"
               lipo -create -output "$bundle/Contents/MacOS/quietmoused" \
                 "target/aarch64-apple-darwin/release/quietmoused" "target/x86_64-apple-darwin/release/quietmoused"
               cp packaging/macos/quietmouse.icns "$bundle/Contents/Resources/"
@@ -115,9 +119,11 @@ jobs:
               bundle_id="io.github.benjweaver.quietmouse.quietmoused"
               sed -e "s/__VERSION__/$version/g" -e "s/__BUNDLE_ID__/$bundle_id/g" \
                 packaging/macos/Info.plist > "$bundle/Contents/Info.plist"
+              sed -e "s/__BUNDLE_ID__/$bundle_id/g" packaging/macos/io.github.benjweaver.quietmouse.plist \
+                > "$bundle/Contents/Library/LaunchAgents/io.github.benjweaver.quietmouse.plist"
               codesign --force --sign - --identifier "$bundle_id" "$bundle"
               codesign --verify --all-architectures --strict "$bundle"
-              ln -s quietmoused.app/Contents/MacOS/quietmoused "$dir/quietmoused"
+              ln -s quietmouse.app/Contents/MacOS/quietmoused "$dir/quietmoused"
 
               tar -czf "out/$dir.tar.gz" "$dir"
               ;;

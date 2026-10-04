@@ -7,7 +7,7 @@
 	<key>CFBundleIdentifier</key>
 	<string>__BUNDLE_ID__</string>
 	<key>CFBundleName</key>
-	<string>quietmoused</string>
+	<string>quietmouse</string>
 	<key>CFBundleDisplayName</key>
 	<string>quietmouse</string>
 	<key>CFBundleIconFile</key>
