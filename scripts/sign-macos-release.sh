@@ -82,3 +82,25 @@ mv "$work/SHA256SUMS.signed" "$work/SHA256SUMS"
 gh release upload "$tag" "$work/$name.tar.gz" "$work/SHA256SUMS" --repo "$repo" --clobber
 gh release edit "$tag" --repo "$repo" --draft=false
 echo "Published $tag with the macOS build signed and notarised; the tap update is starting."
+
+# The README's screenshots come from the release, so retake them in the VMs and commit
+# them. The release is already out, so a failure here only leaves the screenshots to be
+# retaken by hand.
+if [ "${SKIP_SCREENSHOTS:-}" = 1 ]; then
+    echo "SKIP_SCREENSHOTS=1, so the screenshots weren't retaken"
+elif QM_EXPECT_VERSION=${tag#v} sh scripts/screenshots.sh; then
+    if [ -n "$(git status --porcelain -- docs/screenshots)" ]; then
+        git commit -q -m "Update the screenshots for $tag" -- docs/screenshots
+        branch=$(git symbolic-ref --short -q HEAD || true)
+        if [ -n "$branch" ]; then
+            git push -q origin "HEAD:$branch"
+            echo "Committed and pushed the new screenshots for $tag."
+        else
+            echo "Committed the new screenshots for $tag, but HEAD isn't a branch, so push them yourself." >&2
+        fi
+    else
+        echo "The screenshots for $tag are unchanged."
+    fi
+else
+    echo "The screenshots weren't retaken. Run sh scripts/screenshots.sh by hand." >&2
+fi
