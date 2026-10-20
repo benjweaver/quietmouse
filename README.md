@@ -8,6 +8,13 @@ at all. It talks HID++ directly to the device, and nothing else.
 > Not affiliated with Logitech. Quit Logi Options+, Solaar or logiops before running
 > quietmouse; they configure the same device settings and will fight over them.
 
+<p align="center">
+  <img src="docs/screenshots/quietmouse-cli.png" width="720" alt="quietmouse --version and --help in a Mac terminal: version 0.1.30 and its commands, list, info, dpi, events, pair, unpair, run, start, stop, autostart, and config.">
+</p>
+<p align="center">
+  <img src="docs/screenshots/quietmouse-windows-config.png" width="671" alt="Part of quietmouse's example config in Windows Terminal: an MX Master profile with DPI, SmartShift, scrolling, the thumb wheel, and gestures on the thumb button.">
+</p>
+
 ## What it does
 
 - **Pointer:** set DPI, or cycle through a list of DPIs from a button.
