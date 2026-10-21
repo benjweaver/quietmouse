@@ -312,6 +312,16 @@ win_shots() {
 		fi
 		sleep 5
 	done
+	# ssh answers before the auto sign-in has made a desktop for win.sh's tasks to run in.
+	i=0
+	until "$WIN_SH" run 'echo up' > /dev/null 2>&1; do
+		i=$((i + 1))
+		if [ "$i" -ge 36 ]; then
+			echo "screenshots.sh: no desktop session on $WIN_HOST after three minutes" >&2
+			exit 1
+		fi
+		sleep 5
+	done
 
 	# The release's own installer, which takes the latest release from GitHub.
 	WIN_TIMEOUT=600 "$WIN_SH" run 'irm https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/windows/install.ps1 | iex'
