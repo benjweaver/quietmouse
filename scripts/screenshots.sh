@@ -297,6 +297,22 @@ EOF
 	done
 }
 
+# win_detached CODE: runs PowerShell CODE in the desktop session, in a PowerShell of its own
+# whose output goes to files, and waits for that PowerShell only. Through win.sh run, a
+# command's output is a pipe, and `quietmouse start` (the installer runs it) leaves the
+# agent holding that pipe open, so win.sh would wait for the agent to exit, which it never
+# does. CODE must not contain single quotes.
+win_detached() {
+	"$WIN_SH" run '$o = Join-Path $env:TEMP "qm-detached.out"; $e = Join-Path $env:TEMP "qm-detached.err"
+$code = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes('"'$1'"'))
+$p = Start-Process powershell.exe -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $code -RedirectStandardOutput $o -RedirectStandardError $e -WindowStyle Hidden -PassThru
+$null = $p.Handle  # keeps ExitCode readable after the process exits
+$p.WaitForExit()
+Get-Content $o, $e
+Remove-Item $o, $e -ErrorAction SilentlyContinue
+if ($p.ExitCode) { throw "exited with $($p.ExitCode)" }'
+}
+
 win_shots() {
 	win_on=1
 	if [ "$("$UTMCTL" status 'Windows 11')" != started ]; then
@@ -324,11 +340,11 @@ win_shots() {
 	done
 
 	# The release's own installer, which takes the latest release from GitHub.
-	WIN_TIMEOUT=600 "$WIN_SH" run 'irm https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/windows/install.ps1 | iex'
+	WIN_TIMEOUT=600 win_detached 'irm https://raw.githubusercontent.com/benjweaver/quietmouse/main/packaging/windows/install.ps1 | iex'
 	if [ -n "${QM_WIN_DIR:-}" ]; then
 		"$WIN_SH" run 'New-Item -ItemType Directory -Force (Join-Path $env:LOCALAPPDATA "qm-stage") | Out-Null' > /dev/null
 		scp -q "$QM_WIN_DIR/quietmouse.exe" "$QM_WIN_DIR/quietmoused.exe" "$WIN_HOST:AppData/Local/qm-stage/"
-		"$WIN_SH" run '$p = Join-Path $env:LOCALAPPDATA "Programs\quietmouse"; & (Join-Path $p "quietmouse.exe") stop; Copy-Item (Join-Path $env:LOCALAPPDATA "qm-stage\*.exe") $p -Force; Remove-Item (Join-Path $env:LOCALAPPDATA "qm-stage") -Recurse -Force; & (Join-Path $p "quietmouse.exe") start' > /dev/null
+		win_detached '$p = Join-Path $env:LOCALAPPDATA "Programs\quietmouse"; & (Join-Path $p "quietmouse.exe") stop; Copy-Item (Join-Path $env:LOCALAPPDATA "qm-stage\*.exe") $p -Force; Remove-Item (Join-Path $env:LOCALAPPDATA "qm-stage") -Recurse -Force; & (Join-Path $p "quietmouse.exe") start' > /dev/null
 	fi
 	ver=$("$WIN_SH" run '& (Join-Path $env:LOCALAPPDATA "Programs\quietmouse\quietmouse.exe") --version' | tr -d '\r')
 	echo "Windows VM: $ver"
