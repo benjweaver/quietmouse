@@ -19,6 +19,10 @@ const KNOWN_FEATURES: &[u16] = &[
     features::HIRES_WHEEL,
     features::THUMB_WHEEL,
     features::ADJUSTABLE_DPI,
+    features::FN_INVERSION,
+    features::FN_INVERSION_NEW,
+    features::FN_INVERSION_HOSTS,
+    features::DISABLE_KEYS,
 ];
 
 /// Sub-ids from here up are HID++ 1.0 notifications, never feature indices.

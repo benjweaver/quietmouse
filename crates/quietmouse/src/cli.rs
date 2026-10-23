@@ -8,6 +8,7 @@ use anyhow::{Context, bail};
 use crossbeam_channel::Receiver;
 use hidapi::HidApi;
 use hidpp::features::battery::{Battery, ChargeState};
+use hidpp::features::keyboard::{self, FunctionKeys};
 use hidpp::features::reprog::{self, Reporting};
 use hidpp::features::smartshift::{self, NEVER_DISENGAGE, SmartShift, WheelMode};
 use hidpp::features::wheel::{self, ThumbReporting};
@@ -189,6 +190,16 @@ pub fn info(wanted: Option<&str>) -> anyhow::Result<()> {
     });
     row("Easy-Switch", host::read(session, device), |h| {
         format!("channel {} of {}", h.current + 1, h.count)
+    });
+    row("Function keys", keyboard::function_keys(session, device), |keys| {
+        match keys {
+            FunctionKeys::Standard => "F1–F12; Fn for the printed functions",
+            FunctionKeys::Special => "the printed functions; Fn for F1–F12",
+        }
+        .to_owned()
+    });
+    row("Keys off", keyboard::disabled_keys(session, device), |keys| {
+        format!("{} (can switch off {})", keys.disabled, keys.supported)
     });
 
     if device.has(features::REPROG_CONTROLS_V4) {

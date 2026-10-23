@@ -3,6 +3,7 @@
 pub mod battery;
 pub mod dpi;
 pub mod host;
+pub mod keyboard;
 pub mod reprog;
 pub mod smartshift;
 pub mod wheel;
@@ -21,6 +22,11 @@ pub const SMART_SHIFT_ENHANCED: u16 = 0x2111;
 pub const HIRES_WHEEL: u16 = 0x2121;
 pub const THUMB_WHEEL: u16 = 0x2150;
 pub const ADJUSTABLE_DPI: u16 = 0x2201;
+pub const FN_INVERSION: u16 = 0x40A0;
+pub const FN_INVERSION_NEW: u16 = 0x40A2;
+/// Fn inversion kept per Easy-Switch channel.
+pub const FN_INVERSION_HOSTS: u16 = 0x40A3;
+pub const DISABLE_KEYS: u16 = 0x4521;
 
 /// Human-readable name of a feature id, for diagnostics.
 pub fn name(id: u16) -> Option<&'static str> {

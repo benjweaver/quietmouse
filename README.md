@@ -30,6 +30,9 @@ at all. It talks HID++ directly to the device, and nothing else.
 - **Gestures:** hold a button and swipe up, down, left or right, with a separate
   action for a plain tap. A swipe has to clear a deadzone in one unbroken
   movement, so pressing the button doesn't fire one by accident.
+- **Keyboards:** choose whether F1–F12 or the functions printed on them work
+  without Fn, and switch off Caps Lock, Num Lock, Scroll Lock, Insert or the
+  Windows key. Keys that report to software can be remapped like mouse buttons.
 - **Receivers and Bluetooth:** Unifying, Bolt and Lightspeed receivers, plus direct
   Bluetooth and USB connections. Settings are re-applied when a device wakes or
   reconnects, and diverted buttons are handed back to the device when quietmouse exits.
@@ -180,7 +183,18 @@ press = "toggle_smartshift"
 
 [device.buttons.back]
 press = { cycle_dpi = [800, 1600, 3200] }
+
+[[device]]
+match = "MX Keys"
+keyboard = { function_keys = "standard", disable = ["caps_lock", "insert"] }
 ```
+
+`function_keys = "standard"` makes F1–F12 work without Fn, and `"special"` the
+functions printed on the keys. On keyboards with Easy-Switch that keep this per
+channel, it's set for the channel in use. `disable` lists the keys to switch off,
+from `caps_lock`, `num_lock`, `scroll_lock`, `insert` and `win`. Every other key
+is switched back on, so `disable = []` turns them all back on. `quietmouse info`
+shows which keys your keyboard can switch off.
 
 Actions: `{ keys = "cmd+shift+4" }`, `{ media = "play_pause" }`, `{ click = "middle" }`,
 `{ shell = "…" }`, `{ dpi = 800 }`, `{ cycle_dpi = […] }`, `{ host = 2 }`,
@@ -239,7 +253,8 @@ admin rights. Click into another window and they work again.
 crates/hidpp       HID++ 1.0/2.0 protocol. No OS dependencies; tested against scripted devices.
   report, session    framing, request/reply matching, notification backlog
   device, receiver   feature discovery, events; receiver registers and connection notices
-  features/          reprogrammable controls, SmartShift, hi-res and thumb wheels, DPI, battery, Easy-Switch
+  features/          reprogrammable controls, SmartShift, hi-res and thumb wheels, DPI, battery, Easy-Switch,
+                     Fn inversion and disabled keys
 crates/quietmouse  the app
   hid                hidapi discovery and transport (one reader thread per interface)
   daemon, worker     one worker thread per receiver or device; applies profiles and re-applies on wake
@@ -300,8 +315,13 @@ Early. Works today: the protocol layer, config, gestures and the CLI, all
 unit-tested, with CI on macOS, Linux and Windows. Tested on hardware so far: an
 MX Master 3S over Bluetooth on macOS and Windows. That covers reading settings,
 remapped buttons, tap and swipe gestures, switching devices, and handing the buttons
-back on exit. Receivers, and running on Linux, still need testing on real devices.
-Planned: per-application profiles and a tray/menu-bar settings app.
+back on exit. Receivers, keyboard settings, and running on Linux, still need testing on real
+devices. Planned, working towards everything Logi Options+ does that doesn't
+need the network: keyboard backlight and OS layout, per-application profiles,
+more actions (opening apps and links, zoom, screenshots, multi-step macros), a
+precision-mode button, scroll speed, battery alerts, MX Master 4 haptics, and a
+tray/menu-bar settings app. Flow, firmware updates and anything else that needs
+the internet stay out.
 
 ## Credits
 

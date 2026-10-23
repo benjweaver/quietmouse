@@ -5,6 +5,15 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Added
+
+- Keyboard settings, under `keyboard` in a `[[device]]`: `function_keys`
+  chooses whether F1–F12 or the functions printed on them work without Fn, and
+  `disable` switches off Caps Lock, Num Lock, Scroll Lock, Insert or the
+  Windows key. `quietmouse info` shows both. Not yet tested on a real keyboard.
+
 ## [0.1.30] - 2026-10-04
 
 ### Changed
@@ -528,6 +537,7 @@ First release.
   key.
 - No network access, enforced in CI.
 
+[Unreleased]: https://github.com/benjweaver/quietmouse/compare/v0.1.30...HEAD
 [0.1.30]: https://github.com/benjweaver/quietmouse/compare/v0.1.29...v0.1.30
 [0.1.29]: https://github.com/benjweaver/quietmouse/compare/v0.1.28...v0.1.29
 [0.1.28]: https://github.com/benjweaver/quietmouse/releases/tag/v0.1.28

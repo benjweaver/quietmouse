@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, bail, ensure};
+use hidpp::features::keyboard::{FunctionKeys, Keys};
 use hidpp::features::reprog::cid;
 use serde::Deserialize;
 
@@ -82,6 +83,7 @@ pub struct Profile {
     pub smartshift: Option<SmartShiftConfig>,
     pub scroll: Option<ScrollConfig>,
     pub thumbwheel: Option<ThumbWheelConfig>,
+    pub keyboard: Option<KeyboardConfig>,
     #[serde(default)]
     pub buttons: BTreeMap<ButtonId, ButtonConfig>,
 }
@@ -131,6 +133,67 @@ impl ThumbWheelConfig {
     /// Actions are bound, so the wheel must report to us instead of scrolling.
     pub fn diverted(&self) -> bool {
         self.left.is_some() || self.right.is_some()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KeyboardConfig {
+    /// What F1–F12 do without Fn held.
+    pub function_keys: Option<FunctionKeyMode>,
+    /// Keys to switch off. Every other key the keyboard can switch off is
+    /// switched back on, so an empty list turns them all back on.
+    pub disable: Option<Vec<DisableKey>>,
+}
+
+impl KeyboardConfig {
+    /// The keys to switch off, if the config says.
+    pub fn disabled_keys(&self) -> Option<Keys> {
+        let keys = self.disable.as_ref()?;
+        Some(keys.iter().fold(Keys::empty(), |all, key| all.union(key.keys())))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FunctionKeyMode {
+    /// F1–F12, with Fn for the functions printed on the keys.
+    Standard,
+    /// The functions printed on the keys, with Fn for F1–F12.
+    #[serde(alias = "media")]
+    Special,
+}
+
+impl From<FunctionKeyMode> for FunctionKeys {
+    fn from(mode: FunctionKeyMode) -> Self {
+        match mode {
+            FunctionKeyMode::Standard => FunctionKeys::Standard,
+            FunctionKeyMode::Special => FunctionKeys::Special,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DisableKey {
+    CapsLock,
+    NumLock,
+    ScrollLock,
+    Insert,
+    /// The Windows key, or Super.
+    #[serde(alias = "windows", alias = "super")]
+    Win,
+}
+
+impl DisableKey {
+    fn keys(self) -> Keys {
+        match self {
+            DisableKey::CapsLock => Keys::CAPS_LOCK,
+            DisableKey::NumLock => Keys::NUM_LOCK,
+            DisableKey::ScrollLock => Keys::SCROLL_LOCK,
+            DisableKey::Insert => Keys::INSERT,
+            DisableKey::Win => Keys::WIN,
+        }
     }
 }
 
@@ -426,6 +489,14 @@ press = "toggle_smartshift"
 #   { host = 2 }                     switch Easy-Switch channel
 #   "overview"  "app_windows"  "show_desktop"  "desktop_left"  "desktop_right"
 #   "toggle_smartshift"  "none"
+
+# Keyboards get a [[device]] of their own, matched by name the same way. Buttons
+# work there too: `quietmouse info` lists the keys that can be remapped.
+# [[device]]
+# match = "MX Keys"
+# [device.keyboard]
+# function_keys = "standard"       # F1–F12 without Fn; "special" for the printed functions
+# disable = ["caps_lock", "insert"] # caps_lock num_lock scroll_lock insert win
 "#;
 
 /// A commented example config.
@@ -450,6 +521,22 @@ mod tests {
             profile.buttons[&ButtonId(cid::MODE_SHIFT)].press,
             Some(Action::ToggleSmartshift)
         );
+    }
+
+    // The keyboard example is commented out, since the config is written for a
+    // mouse, so nothing would catch it going stale.
+    #[test]
+    fn the_commented_keyboard_example_is_valid() {
+        let start = EXAMPLE.find("# [[device]]").expect("the example shows a keyboard");
+        let uncommented: String = EXAMPLE[start..]
+            .lines()
+            .map(|line| line.strip_prefix("# ").unwrap_or(line))
+            .map(|line| format!("{line}\n"))
+            .collect();
+        let config = Config::parse(&uncommented).unwrap();
+        let keyboard = config.profile_for("MX Keys").unwrap().keyboard.as_ref().unwrap();
+        assert_eq!(keyboard.function_keys, Some(FunctionKeyMode::Standard));
+        assert_eq!(keyboard.disabled_keys(), Some(Keys::CAPS_LOCK.union(Keys::INSERT)));
     }
 
     // The example shows the defaults commented out, so nothing parses them and
@@ -595,6 +682,36 @@ mod tests {
             let error = format!("{:#}", Config::parse(text).unwrap_err());
             assert!(error.contains(expected), "{error:?} should mention {expected:?}");
         }
+    }
+
+    #[test]
+    fn keyboard_settings_parse_into_device_values() {
+        let config = Config::parse(
+            r#"
+            [[device]]
+            match = "MX Keys"
+            keyboard = { function_keys = "standard", disable = ["caps_lock", "super", "insert"] }
+            [[device]]
+            match = "K380"
+            keyboard = { function_keys = "media", disable = [] }
+            "#,
+        )
+        .unwrap();
+        let mx = config.profile_for("MX Keys S").unwrap().keyboard.as_ref().unwrap();
+        assert_eq!(mx.function_keys, Some(FunctionKeyMode::Standard));
+        assert_eq!(
+            mx.disabled_keys(),
+            Some(Keys::CAPS_LOCK.union(Keys::WIN).union(Keys::INSERT))
+        );
+        let k380 = config.profile_for("K380").unwrap().keyboard.as_ref().unwrap();
+        assert_eq!(k380.function_keys, Some(FunctionKeyMode::Special));
+        // An empty list is a request to switch every key back on, not "leave alone".
+        assert_eq!(k380.disabled_keys(), Some(Keys::empty()));
+        let error = format!(
+            "{:#}",
+            Config::parse("[[device]]\nmatch = \"x\"\nkeyboard = { disable = [\"escape\"] }").unwrap_err()
+        );
+        assert!(error.contains("unknown variant `escape`"), "{error}");
     }
 
     #[test]

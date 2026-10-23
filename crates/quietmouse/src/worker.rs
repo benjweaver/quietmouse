@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use hidpp::features::keyboard::{self, Keys};
 use hidpp::features::reprog::{self, Control, Reporting};
 use hidpp::features::smartshift::{self, NEVER_DISENGAGE, WheelMode};
 use hidpp::features::wheel::{self, ScrollMode, ThumbInfo, ThumbReporting};
@@ -14,8 +15,8 @@ use hidpp::features::{self, dpi, host};
 use hidpp::{Device, DeviceEvent, Error, Link, Report, Session, receiver};
 
 use crate::config::{
-    Action, ButtonConfig, ButtonId, Config, DEFAULT_GESTURE_STRAIGHTNESS, Profile, ScrollConfig, ShiftMode,
-    SmartShiftConfig, ThumbWheelConfig, default_gesture_threshold,
+    Action, ButtonConfig, ButtonId, Config, DEFAULT_GESTURE_STRAIGHTNESS, KeyboardConfig, Profile, ScrollConfig,
+    ShiftMode, SmartShiftConfig, ThumbWheelConfig, default_gesture_threshold,
 };
 use crate::connect::{self, Role};
 use crate::gesture::{self, Gesture, Ticker};
@@ -543,6 +544,16 @@ impl DeviceState {
                 Err(error) => setting(Err(error), name, "the thumb wheel")?,
             }
         }
+        if let Some(keys) = profile.keyboard.as_ref().and_then(|k| k.function_keys) {
+            setting(
+                apply_function_keys(session, device, keys.into()),
+                name,
+                "the function keys",
+            )?;
+        }
+        if let Some(keys) = profile.keyboard.as_ref().and_then(KeyboardConfig::disabled_keys) {
+            setting(apply_disabled_keys(session, device, keys), name, "which keys are off")?;
+        }
         log::debug!(
             "{name}: pointer at {} dpi, so a swipe travels {} counts by default",
             self.dpi.map_or_else(|| "an unknown".to_owned(), |dpi| dpi.to_string()),
@@ -800,6 +811,32 @@ fn apply_thumbwheel<L: Link>(
         left: config.left.clone(),
         right: config.right.clone(),
     }))
+}
+
+fn apply_function_keys<L: Link>(
+    session: &mut Session<L>,
+    device: &Device,
+    wanted: keyboard::FunctionKeys,
+) -> hidpp::Result<()> {
+    if keyboard::function_keys(session, device)? != wanted {
+        keyboard::set_function_keys(session, device, wanted)?;
+    }
+    Ok(())
+}
+
+/// Switches off `wanted` and back on every other key the keyboard can switch
+/// off. Keys it can't are left out, with a warning.
+fn apply_disabled_keys<L: Link>(session: &mut Session<L>, device: &Device, wanted: Keys) -> hidpp::Result<()> {
+    let current = keyboard::disabled_keys(session, device)?;
+    let unsupported = wanted.difference(current.supported);
+    if !unsupported.is_empty() {
+        log::warn!("{}: this keyboard can't switch off {unsupported}", device.name());
+    }
+    let wanted = wanted.intersection(current.supported);
+    if current.disabled != wanted {
+        keyboard::set_disabled_keys(session, device, wanted)?;
+    }
+    Ok(())
 }
 
 /// One action per native scroll increment.
